@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Appointments</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="pagesForm" id="pagesAddAppointments">
+            <label id="pageslbl">Appointments:</label>
+            <button class="btn" id="viewSearchBtn" onclick="window.location.href='/';">View and Search</button>
+            <button class="btn" id="addBtn" onclick="window.location.href='/addAppointments';">Add Appointments</button>
+            <button class="btn" id="reportsBtn" onclick="window.location.href='/reports';">Generate Reports</button>
+        </div>
+
+                <!-- Form for adding a new appointment -->
+                <form action="/insertAppointment" method="post" id="addForm">
+                    <div class="input-group">
+                        <label for="appcode">Appointment Code:</label>
+                        <input type="text" id="appcode" name="appcode" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="clinicid">Clinic ID:</label>
+                        <input type="text" id="clinicid" name="clinicid" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="doctorid">Doctor ID:</label>
+                        <input type="text" id="doctorid" name="doctorid" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="pxid">Patient ID:</label>
+                        <input type="text" id="pxid" name="pxid" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="status">Status:</label>
+                        <input type="text" id="status" name="status" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="queuedate">Queued Date:</label>
+                        <input type="datetime-local" id="queuedate" name="queuedate" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="type">Type:</label>
+                        <input type="text" id="type" name="type" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="virtualind">Virtual ID:</label>
+                        <input type="text" id="virtualind" name="virtualind">
+                    </div>
+                    
+                    <button type="submit" class="btn">Submit Appointment</button>
+                </form>
+
+        <!-- <div id="appointmentList">
+            <h2>Appointments</h2>
+            <% if(appointments && appointments.length > 0) { %>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Appointment Code</th>
+                            <th>Clinic ID</th>
+                            <th>Doctor ID</th>
+                            <th>PX ID</th>
+                            <th>Status</th>
+                            <th>Queued Date</th>
+                            <th>Type</th>
+                            <th>Virtual Index</th>
+                            
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% appointments.forEach(function(appointment) { %>
+                            <tr>
+                                <td><%= appointment.appcode %></td>
+                                <td><%= appointment.clinicid %></td>
+                                <td><%= appointment.doctorid %></td>
+                                <td><%= appointment.pxid %></td>
+                                <td><%= appointment.status %></td>
+                                <td><%= appointment.QueuedDate %></td>
+                                <td><%= appointment.type %></td>
+                                <td><%= appointment.virtualind %></td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            <% } else { %>
+                <p>No appointments found.</p>
+            <% } %>
+        </div>
+    </div>
+    <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+    <script src="/js/script.js"></script> -->
+    
+            <!-- Form for adding a new appointment -->
+            <form action="/insertAppointment" method="post" id="addForm">
+                <!-- Input fields for adding a new appointment -->
+                <!-- ... -->
+            </form>
+    
+            <div id="appointmentList">
+                <h2>Appointments</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Appointment Code</th>
+                            <th>Clinic ID</th>
+                            <th>Doctor ID</th>
+                            <th>PX ID</th>
+                            <th>Status</th>
+                            <th>Queued Date</th>
+                            <th>Type</th>
+                            <th>Virtual</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Simulated static row for demonstration -->
+                        <tr>
+                            <td>AppCode123</td>
+                            <td>Clinic101</td>
+                            <td>Doctor202</td>
+                            <td>PX303</td>
+                            <td>Confirmed</td>
+                            <td>2023-04-01</td>
+                            <td>Consultation</td>
+                            <td>N/A</td>
+                            <td>
+                                <button class="btn" onclick="alert('Edit functionality not implemented.');">Edit</button>
+                                <button class="btn delete" onclick="alert('Delete functionality not implemented.');">Delete</button>
+                            </td>
+                        </tr>
+                        <!-- You can replicate the above row for each appointment -->
+                    </tbody>
+                </table>
+                <% if(appointments && appointments.length > 0) { %>
+                    <!-- Dynamic EJS content for listing appointments would go here -->
+                <% } else { %>
+                    <p>No appointments found.</p>
+                <% } %>
+            </div>
+        </div>
+        <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+        <script src="/js/script.js"></script>
+</body>
+</html>

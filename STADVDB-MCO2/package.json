@@ -1,0 +1,29 @@
+{
+  "name": "stadvdb-mco2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alessgomez/STADVDB-MCO2.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/alessgomez/STADVDB-MCO2/issues"
+  },
+  "homepage": "https://github.com/alessgomez/STADVDB-MCO2#readme",
+  "dependencies": {
+    "bluebird": "^3.7.2",
+    "connect-flash": "^0.1.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "express-handlebars": "^7.0.7",
+    "hbs": "^4.2.0",
+    "mysql": "^2.18.1"
+  }
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Reports</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Number of Appointments per Year</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Appointment Year</th>
+                    <th>Number of Appointments</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% latestAppointments.forEach(function(appointment) { %>
+                    <tr>
+                        <td><%= appointment.AppointmentYear %></td>
+                        <td><%= appointment.NumberOfAppointments %></td>
+                        
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+
+        <h2>First 10 Upcoming Appointments</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Appointment Code</th>
+                    <th>Doctor ID</th>
+                    <th>Patient ID</th>
+                    <th>Status</th>
+                    <th>Queue Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% upcomingAppointments.forEach(function(appointment) { %>
+                    <tr>
+                        <td><%= appointment.appcode %></td>
+                        <td><%= appointment.doctorid %></td>
+                        <td><%= appointment.pxid %></td>
+                        <td><%= appointment.status %></td>
+                        <td><%= formatDate(appointment.QueueDate) %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+        
+        <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+    </div>
+    <script src="/js/script.js"></script>
+</body>
+</html>

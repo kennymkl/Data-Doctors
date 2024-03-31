@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View and Search Appointments</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container" id="records">
+        <h1>Search Appointments</h1>
+        <form action="/viewSearch" method="GET">
+            <label for="searchTerm">Search by Appointment Code:</label>
+            <input type="text" id="searchTerm" name="searchTerm" placeholder="Enter ApptCode...">
+            <button type="submit">Search</button>
+        </form>
+
+        <% if (appointments && appointments.length > 0) { %>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Appointment Code</th>
+                        <th>Doctor ID</th>
+                        <th>Patient ID</th>
+                        <th>Status</th>
+                        <th>Queue Date</th>
+                        <th>Actions</th>
+
+                    </tr>
+                </thead>
+                <tbody>
+                    <% appointments.forEach(function(appointment) { %>
+                        <tr>
+                            <td><%= appointment.apptcode %></td>
+                            <td><%= appointment.doctorid %></td>
+                            <td><%= appointment.pxid %></td>
+                            <td><%= appointment.status %></td>
+                            <td><%= formatDate(appointment.QueueDate) %></td>
+                            <td>
+                                <a href="/updateAppointments/<%= appointment.apptcode %>" class="edit-btn">Edit</a>
+                            </td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        <% } else { %>
+            <p>No appointments found.</p>
+        <% } %>
+    </div>
+    <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+    <script src="/js/script.js"></script>
+</body>
+</html>

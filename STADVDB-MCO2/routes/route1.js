@@ -35,21 +35,6 @@ app.get('/addAppointments', (req, res) => {
     });
 });
 
-// function formatDate(dateString) {
-//     try {
-//       const date = new Date(dateString);
-//       if (!isNaN(date.getTime())) {
-//         // Date is valid
-//         return date.toISOString().slice(0, 10);
-//       } else {
-//         // Date is invalid
-//         return 'Invalid date';
-//       }
-//     } catch (error) {
-//       // Error parsing date
-//       return 'Error formatting date';
-//     }
-//   }
 function formatDate(dateString) {
     console.log("Formatting date:", dateString); // Log input
     try {
@@ -91,21 +76,10 @@ app.get('/reports', (req, res) => {
     });
 });
 
-// Serve the Update Appointment page, dynamically populated based on the appointment code
-app.get('/updateAppointment/:appcode', (req, res) => {
-    // You would normally fetch the appointment data here
-    const appointmentData = {
-        appcode: req.params.appcode,
-        status: 'Scheduled',
-        queuedate: new Date().toISOString().slice(0,16),
-        type: 'Consultation',
-        virtualid: '12345'
-    };
-    res.render('updateAppointment', { ...appointmentData });
-});
+
 
 app.get('/viewSearch', (req, res) => {
-    let sql = 'SELECT * FROM appointments ORDER BY queuedate DESC LIMIT 500';
+    let sql = 'SELECT * FROM appointments LIMIT 500'; //ORDER BY queuedate DESC
     const searchTerm = req.query.searchTerm;
 
     if (searchTerm) {
@@ -126,21 +100,6 @@ app.get('/viewSearch', (req, res) => {
     }
 });
 
-// app.get('/updateAppointments/:apptcode', (req, res) => {
-//     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
-//     db.query(sql, [req.params.apptcode], (err, results) => {
-//         if (err) throw err;
-//         if (results.length > 0) {
-//             const appointmentData = results[0];
-//             // Convert queuedate to the required format if necessary
-//             appointmentData.queuedate = new Date(appointmentData.queuedate).toISOString().slice(0,16);
-//             res.render('updateAppointment', { ...appointmentData });
-//         } else {
-//             // Handle case where no appointment is found
-//             res.send('Appointment not found');
-//         }
-//     });
-// });
 app.get('/updateAppointments/:apptcode', (req, res) => {
     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
     db.query(sql, [req.params.apptcode], (err, results) => {

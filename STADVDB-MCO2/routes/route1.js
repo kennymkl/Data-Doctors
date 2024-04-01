@@ -8,7 +8,7 @@ const mysql = require('mysql');
 var db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'admin123', //change password to specific credentials
+    password: 'melgeoffrey', //change password to specific credentials
     database: 'mco2'
   });
 
@@ -75,7 +75,7 @@ app.get('/reports', (req, res) => {
 });
 
 app.get('/viewSearch', (req, res) => {
-    let sql = 'SELECT * FROM appointments ORDER BY queuedate DESC LIMIT 500';
+    let sql = 'SELECT * FROM appointments LIMIT 500';
     const searchTerm = req.query.searchTerm;
 
     if (searchTerm) {
@@ -150,7 +150,11 @@ app.post('/deleteAppointment', (req, res) => {
 });
 
 app.post('/insertAppointment', (req, res) => {
-    const { clinicid, doctorid, pxid, status, queuedate, type, virtualind } = req.body;
+    let { apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind } = req.body;
+    type = type === '' ? null : type;
+    virtualind = virtualind === '' ? null : virtualind;
+    queuedate = queuedate === ''? null:queuedate;
+
     // Find the highest appointment code
     const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
     db.query(findMaxApptCodeSql, (err, result) => {
@@ -161,8 +165,8 @@ app.post('/insertAppointment', (req, res) => {
         const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1; // Increment or start at 1
         
         // Insert new appointment with auto-generated apptcode
-        const insertSql = 'INSERT INTO appointments (apptcode, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-        db.query(insertSql, [maxApptCode, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'], (err, result) => {
+        const insertSql = 'INSERT INTO appointments (apptcode,apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?,?,?, ?, ?, ?, ?, ?, ?)';
+        db.query(insertSql, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'], (err, result) => {
             if (err) {
                 console.error('Error inserting new appointment:', err);
                 return res.status(500).send('Error processing request');

@@ -11,10 +11,13 @@
         <!-- Form for adding a new appointment -->
         <form action="/insertAppointment" method="post" id="addForm">
             <div class="input-group">
+                <label for="apptid">Appointment ID:</label>
+                <input type="text" id="apptid" name="apptid" value="FCEB4030B051CCDEAB7A5C0806A962BD">
+            </div>
+            <div class="input-group">
                 <label for="clinicid">Clinic ID:</label>
                 <input type="text" id="clinicid" name="clinicid" value="MISSING">
             </div>
-            
             <div class="input-group">
                 <label for="doctorid">Doctor ID:</label>
                 <input type="text" id="doctorid" name="doctorid" value="MISSING">
@@ -27,22 +30,22 @@
             
             <div class="input-group">
                 <label for="status">Status:</label>
-                <input type="text" id="status" name="status" placeholder="NULL" value="NULL">
+                <input type="text" id="status" name="status" placeholder="Queued" value="Queued">
             </div>
             
             <div class="input-group">
                 <label for="queuedate">Queued Date:</label>
-                <input type="datetime-local" id="queuedate" name="queuedate" placeholder="NULL" value="NULL">
+                <input type="datetime-local" id="queuedate" name="queuedate" placeholder="NULL" value="">
             </div>
             
             <div class="input-group">
                 <label for="type">Type:</label>
-                <input type="text" id="type" name="type" placeholder="NULL" value="NULL">
+                <input type="text" id="type" name="type" placeholder="NULL" value="">
             </div>
             
             <div class="input-group">
-                <label for="virtualind">Virtual Index:</label>
-                <input type="text" id="virtualind" name="virtualind" placeholder="NULL" value="NULL">
+                <label for="virtualind">Virtual:</label>
+                <input type="text" id="virtualind" name="virtualind" placeholder="NULL" value="">
             </div>
             
             <button type="submit" class="btn">Add this Appointment</button>

@@ -4,55 +4,139 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generate Reports</title>
-    <link rel="stylesheet" href="css/styles.css">
 </head>
+
+<style>
+    body {
+    font-family: Arial, sans-serif;
+}
+.btn {
+    background-color: #736fdc;
+    color: white;
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+.btn-back {
+    background-color: #1c9ef9;
+}
+table {
+    width: 100%; 
+    border-collapse: collapse;
+    font-family: Arial, sans-serif;
+}
+th, td {
+    border: 1px solid #ccc;
+    text-align: left;
+    padding: 8px;
+}
+th {
+    background-color: #736fdc;
+    color: white;
+}
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+}
+
+.button-container {
+    margin-bottom: 20px; /* Adjust based on your preference */
+}
+
+</style>
+
 <body>
     <div class="container">
-        <h2>Number of Appointments per Year</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Appointment Year</th>
-                    <th>Number of Appointments</th>
-                </tr>
-            </thead>
-            <tbody>
-                <% latestAppointments.forEach(function(appointment) { %>
+        <!-- Existing buttons and reports -->
+        <div class="button-container">
+            <button id="btnAppointmentsYear" class="btn">Show Appointments per Year</button>
+            <button id="btnAverageAge" class="btn">Show Average Age of Patients</button>
+            <button id="btnStatusReport" class="btn">Show No. of Appointments per Status</button>
+            <button class="btn btn-back" onclick="window.location.href='/';">Back to Main Page</button>
+        </div>        
+        <div id="appointmentsYearReport" style="display:none;">
+            <h2>Number of Appointments per Year</h2>
+            <table>
+                <thead>
                     <tr>
-                        <td><%= appointment.AppointmentYear %></td>
-                        <td><%= appointment.NumberOfAppointments %></td>
-                        
+                        <th>Appointment Year</th>
+                        <th>Number of Appointments</th>
                     </tr>
-                <% }); %>
-            </tbody>
-        </table>
-
-        <h2>First 10 Upcoming Appointments</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Appointment Code</th>
-                    <th>Doctor ID</th>
-                    <th>Patient ID</th>
-                    <th>Status</th>
-                    <th>Queue Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                <% upcomingAppointments.forEach(function(appointment) { %>
+                </thead>
+                <tbody>
+                    <%yearlyAppointments.forEach(function(appointment) { %>
+                        <tr>
+                            <td><%= appointment.AppointmentYear %></td>
+                            <td><%= appointment.NumberOfAppointments %></td>
+                            
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <div id="averageAgeReport" style="display:none;">
+            <h2>Average Age of Patients per Year</h2>
+            <table>
+                <thead>
                     <tr>
-                        <td><%= appointment.appcode %></td>
-                        <td><%= appointment.doctorid %></td>
-                        <td><%= appointment.pxid %></td>
-                        <td><%= appointment.status %></td>
-                        <td><%= formatDate(appointment.QueueDate) %></td>
+                        <th>Appointment Year</th>
+                        <th>Average Age</th>
                     </tr>
-                <% }); %>
-            </tbody>
-        </table>
-        
-        <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+                </thead>
+                <tbody>
+                    <%averageAgeAppointments.forEach(function(appointment) { %>
+                        <tr>
+                            <td><%= appointment.AppointmentYear %></td>
+                            <td><%= appointment.AverageAge %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <!-- New report button and section -->
+        <div id="statusReport" style="display:none;">
+            <h2>Number of Appointments per Status</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Number of Appointments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <%statusAppointments.forEach(function(appointment) { %>
+                        <tr>
+                            <td><%= appointment.Status %></td>
+                            <td><%= appointment.NumberOfAppointments %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
     </div>
-    <script src="/js/script.js"></script>
+    <script>
+        // Existing JavaScript functionality
+        document.getElementById("btnAppointmentsYear").onclick = function() {
+            var report = document.getElementById("appointmentsYearReport");
+            report.style.display = report.style.display === "none" ? "block" : "none";
+        };
+
+        document.getElementById("btnAverageAge").onclick = function() {
+            var report = document.getElementById("averageAgeReport");
+            report.style.display = report.style.display === "none" ? "block" : "none";
+        };
+
+        // New report functionality
+        document.getElementById("btnStatusReport").onclick = function() {
+            var report = document.getElementById("statusReport");
+            report.style.display = report.style.display === "none" ? "block" : "none";
+        };
+    </script>
 </body>
 </html>

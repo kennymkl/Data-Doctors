@@ -2,12 +2,13 @@
 const express = require('express');
 const path = require('path');
 const app = express();
+const router = express.Router();
 const mysql = require('mysql');
 
 var db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'melgeoffrey', //change password to specific credentials
+    password: 'admin123', //change password to specific credentials
     database: 'mco2'
   });
 
@@ -17,8 +18,6 @@ var db = mysql.createConnection({
     }
     console.log('Connected to the MySQL server.');
   });
-
-
 
 app.get('/', (req, res) => {
     res.render('index');
@@ -35,21 +34,6 @@ app.get('/addAppointments', (req, res) => {
     });
 });
 
-// function formatDate(dateString) {
-//     try {
-//       const date = new Date(dateString);
-//       if (!isNaN(date.getTime())) {
-//         // Date is valid
-//         return date.toISOString().slice(0, 10);
-//       } else {
-//         // Date is invalid
-//         return 'Invalid date';
-//       }
-//     } catch (error) {
-//       // Error parsing date
-//       return 'Error formatting date';
-//     }
-//   }
 function formatDate(dateString) {
     console.log("Formatting date:", dateString); // Log input
     try {
@@ -67,7 +51,6 @@ function formatDate(dateString) {
       return 'Error formatting date';
     }
 }
-
 
 app.get('/reports', (req, res) => {
     const latestAppointmentsSql = 'SELECT YEAR(QueueDate) AS AppointmentYear, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY YEAR(QueueDate) ORDER BY AppointmentYear;';
@@ -89,19 +72,6 @@ app.get('/reports', (req, res) => {
             });
         });
     });
-});
-
-// Serve the Update Appointment page, dynamically populated based on the appointment code
-app.get('/updateAppointment/:appcode', (req, res) => {
-    // You would normally fetch the appointment data here
-    const appointmentData = {
-        appcode: req.params.appcode,
-        status: 'Scheduled',
-        queuedate: new Date().toISOString().slice(0,16),
-        type: 'Consultation',
-        virtualid: '12345'
-    };
-    res.render('updateAppointment', { ...appointmentData });
 });
 
 app.get('/viewSearch', (req, res) => {
@@ -126,21 +96,6 @@ app.get('/viewSearch', (req, res) => {
     }
 });
 
-// app.get('/updateAppointments/:apptcode', (req, res) => {
-//     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
-//     db.query(sql, [req.params.apptcode], (err, results) => {
-//         if (err) throw err;
-//         if (results.length > 0) {
-//             const appointmentData = results[0];
-//             // Convert queuedate to the required format if necessary
-//             appointmentData.queuedate = new Date(appointmentData.queuedate).toISOString().slice(0,16);
-//             res.render('updateAppointment', { ...appointmentData });
-//         } else {
-//             // Handle case where no appointment is found
-//             res.send('Appointment not found');
-//         }
-//     });
-// });
 app.get('/updateAppointments/:apptcode', (req, res) => {
     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
     db.query(sql, [req.params.apptcode], (err, results) => {
@@ -177,10 +132,46 @@ app.post('/submitUpdate', (req, res) => {
         if (err) throw err;
         // Redirect back to the appointments list, or show a success message
         res.redirect('/viewSearch');
-   
     });
 });
 
+app.post('/deleteAppointment', (req, res) => {
+    const { apptcode } = req.body;
+    const sql = 'DELETE FROM appointments WHERE apptcode = ?';
+    db.query(sql, [apptcode], (err, result) => {
+        if (err) {
+            console.error('Error deleting appointment:', err);
+            // Consider sending a more descriptive error to the client
+            return res.status(500).send('Error deleting appointment. Please try again.');
+        }
+        console.log('Appointment deleted successfully');
+        res.redirect('/viewSearch');
+    });
+});
 
+app.post('/insertAppointment', (req, res) => {
+    const { clinicid, doctorid, pxid, status, queuedate, type, virtualind } = req.body;
+    // Find the highest appointment code
+    const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
+    db.query(findMaxApptCodeSql, (err, result) => {
+        if (err) {
+            console.error('Error finding max appointment code:', err);
+            return res.status(500).send('Error processing request');
+        }
+        const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1; // Increment or start at 1
+        
+        // Insert new appointment with auto-generated apptcode
+        const insertSql = 'INSERT INTO appointments (apptcode, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+        db.query(insertSql, [maxApptCode, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'], (err, result) => {
+            if (err) {
+                console.error('Error inserting new appointment:', err);
+                return res.status(500).send('Error processing request');
+            }
+            console.log(maxApptCode);
+            console.log('New appointment added successfully');
+            res.redirect('/addAppointments'); // Adjust redirect as necessary
+        });
+    });
+});
 
 module.exports = app;

@@ -52,23 +52,29 @@ function formatDate(dateString) {
     }
 }
 
-app.get('/reports', (req, res) => {
-    const latestAppointmentsSql = 'SELECT YEAR(QueueDate) AS AppointmentYear, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY YEAR(QueueDate) ORDER BY AppointmentYear;';
-      
-    // Query for the first 10 upcoming appointments
-    const upcomingAppointmentsSql = 'SELECT * FROM appointments WHERE queuedate >= CURDATE() ORDER BY queuedate ASC LIMIT 10';
-      
-    db.query(latestAppointmentsSql, (err, latestAppointmentsResults) => {
+app.get('/reports', async(req, res) => {
+
+    //all mysql queries for report
+    const appointmentsPerYearSql = 'SELECT YEAR(QueueDate) AS AppointmentYear, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY YEAR(QueueDate) ORDER BY AppointmentYear;';
+    const averageAgeSql = 'SELECT YEAR(a.QueueDate) AS AppointmentYear, AVG(p.Age) AS AverageAge FROM appointments a JOIN px p ON a.pxid = p.pxid GROUP BY YEAR(a.QueueDate) ORDER BY AppointmentYear;';
+    const statusSql = 'SELECT Status, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY Status ORDER BY NumberOfAppointments DESC;';
+    
+    db.query(appointmentsPerYearSql, (err, appointmentsPerYearResults) => {
         if (err) throw err;
           
-        db.query(upcomingAppointmentsSql, (err, upcomingAppointmentsResults) => {
+        db.query(averageAgeSql, (err, averageAgeResults) => {
+            if (err) throw err;
+
+            db.query(statusSql,(err,statusResults) => {
             if (err) throw err;
               
             // Pass the formatDate function and query results to the template
             res.render('generateReport', { 
-                latestAppointments: latestAppointmentsResults, 
-                upcomingAppointments: upcomingAppointmentsResults,
+                yearlyAppointments: appointmentsPerYearResults, 
+                averageAgeAppointments: averageAgeResults,
+                statusAppointments: statusResults,
                 formatDate: formatDate // Pass the function for use in EJS
+            });
             });
         });
     });

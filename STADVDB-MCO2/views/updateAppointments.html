@@ -8,23 +8,18 @@
 </head>
 <body>
     <div class="container">
-        <!-- The rest of your update appointment HTML content will go here -->
-        <!-- Replace placeholders like {{this.appcode}} with actual server-side code to inject dynamic data -->
-        <!-- ... -->
-
         <form action="/submitUpdate" method="POST">
-            <label for="apptcode">Appointment Code:</label>
-            <input type="text" id="apptcode" name="apptcode" required><br><br>
-          
             <label for="status">Status:</label>
-            <input type="text" id="status" name="status" required><br><br>
+            <input type="text" id="status" name="status" value="<%= status %>" placeholder="<%= status %>" required><br><br>
             
-            <label for="type">Appointment Type:</label>
-            <input type="text" id="type" name="type" required><br><br>
-            
+            <input type="hidden" name="apptcode" value="<%= apptcode %>">
             <input type="submit" value="Update Appointment">
-          </form>
-
+        </form>   
+        
+        <form action="/deleteAppointment" method="POST">
+            <input type="hidden" name="apptcode" value="<%= apptcode %>">
+            <button type="submit">Delete Appointment</button>
+        </form>   
     </div>
     <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
     <script src="/js/script.js"></script>

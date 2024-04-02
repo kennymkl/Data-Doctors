@@ -171,8 +171,8 @@ app.post('/submitUpdate', (req, res) => {
         // Redirect back to the appointments list, or show a success message
         // res.redirect('/viewSearch');
     })
-    // function used to synchronize the dbs
-    synchronizeDBs(sql, [status, apptcode])
+    // Function to Update/Delete the corresponding row in Slave 1 or 2 - for synchronizing
+    synchronizeUpdateDeleteDBs(sql, [status, apptcode])
 
     return res.redirect('/viewSearch');
 });
@@ -187,8 +187,11 @@ app.post('/deleteAppointment', (req, res) => {
             return res.status(500).send('Error deleting appointment. Please try again.');
         }
         console.log('Appointment deleted successfully');
-        res.redirect('/viewSearch');
     });
+    // Function to Update/Delete the corresponding row in Slave 1 or 2
+    synchronizeUpdateDeleteDBs(sql, [apptcode]);
+
+    res.redirect('/viewSearch');
 });
 
 app.post('/insertAppointment', (req, res) => {
@@ -223,15 +226,19 @@ app.post('/insertAppointment', (req, res) => {
 // SYNCHRONIZE WITH SLAVE 1 AND 2
 // sql = the actual query | updated_cols = list parameters for the query
 // example use: synchronizeDBs(sql, [status, last_updated])
-function synchronizeDBs(sql, updated_cols){
+function synchronizeUpdateDeleteDBs(sql, query_params){
     // Slave 1
-    db_slave1.query(sql, updated_cols, (err, result) => {
+    db_slave1.query(sql, query_params, (err, result) => {
         if (err) throw err;
     });
     // Slave 2
-    db_slave2.query(sql, updated_cols, (err, result) => {
+    db_slave2.query(sql, query_params, (err, result) => {
         if (err) throw err;
     });
+
+    const query = 'SELECT hospitalname FROM clincs GROUP BY hospitalname';
+    
+
 }
 
 module.exports = app;

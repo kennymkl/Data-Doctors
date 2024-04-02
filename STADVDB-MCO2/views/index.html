@@ -45,7 +45,18 @@
 
         .container {
             padding-top: 80px;
-            text-align: center;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .card {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            width:250px;
         }
 
         .btn {
@@ -59,16 +70,25 @@
             transition-duration: 0.4s;
             cursor: pointer;
             margin: 4px 2px;
+            width: 100%;
         }
 
-        .btn-general {background-color: #736fdc;}
-
-        .btn:nth-child(5) {background-color: #736fdc;}
-        .btn:nth-child(3) {background-color: #1aa99e;}
-        .btn:nth-child(4) {background-color: #1c9ef9;}
+        
+        .btn-report {background-color: #736fdc;}
+        .btn-find {background-color: #1aa99e;}
+        .btn-add {background-color: #1c9ef9;}
 
         .btn:hover {
             opacity: 0.8;
+        }
+
+        img {
+            width: 100%; 
+            height: auto;
+            margin-top: 15px;
+            margin-left: auto; 
+            margin-right: auto; 
+            border-radius: 5px;
         }
 
         @media screen and (max-width: 600px) {
@@ -77,6 +97,9 @@
             }
             nav a {
                 margin: 10px 0;
+            }
+            .container {
+                padding-top: 100px;
             }
         }
 
@@ -94,10 +117,24 @@
                 <a href="/">VILLARAMA</a>
             </div>                           
         </nav>
-        <h1>STADVDB - MCO2</h1>
-        <button class="btn" onclick="window.location.href='/viewSearch';">Find Appointments</button>
-        <button class="btn" onclick="window.location.href='/addAppointments';">Add Appointments</button>
-        <button class="btn" onclick="window.location.href='/reports';">Report Appointments</button>
+        <div class="card">
+            <button class="btn btn-find" onclick="window.location.href='/viewSearch';">Find Appointments</button>
+            <a href="/viewsearch">
+            <img src="/images/find-cartoon.png" alt="Find Appointments">
+        </a>
+        </div>
+        <div class="card">
+            <button class="btn btn-add" onclick="window.location.href='/addAppointments';">Add Appointments</button>
+            <a href="/addAppointments">
+            <img src="/images/add-cartoon.png" alt="Add Appointments">
+        </a>
+        </div>
+        <div class="card">
+            <button class="btn btn-report" onclick="window.location.href='/reports';">Appointment Reports</button>
+            <a href="/reports">
+            <img src="/images/report-cartoon.png" alt="Appointment Reports">
+        </a>
+        </div>
     </div>
     <script src="/js/script.js"></script>
 </body>

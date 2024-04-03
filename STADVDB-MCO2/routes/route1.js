@@ -200,7 +200,7 @@ app.post('/insertAppointment', (req, res) => {
     virtualind = virtualind === '' ? null : virtualind;
     queuedate = queuedate === ''? null:queuedate;
 
-    // Find the highest appointment code
+    // Find the highest appointment code 
     const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
     db.query(findMaxApptCodeSql, (err, result) => {
         if (err) {
@@ -208,6 +208,7 @@ app.post('/insertAppointment', (req, res) => {
             return res.status(500).send('Error processing request');
         }
         const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1; // Increment or start at 1
+        
         
         // Insert new appointment with auto-generated apptcode
         const insertSql = 'INSERT INTO appointments (apptcode,apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?,?,?, ?, ?, ?, ?, ?, ?)';
@@ -218,13 +219,17 @@ app.post('/insertAppointment', (req, res) => {
             }
             console.log(maxApptCode);
             console.log('New appointment added successfully');
-            res.redirect('/addAppointments'); // Adjust redirect as necessary
-        });
+            // res.redirect('/addAppointments'); // Adjust redirect as necessary
+
+            synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
+        });        
     });
+
+    res.redirect('/addAppointments');
 });
 
-// SYNCHRONIZE WITH SLAVE 1 AND 2
-// sql = the actual query | updated_cols = list parameters for the query
+// SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
+// sql = the actual query | query_params = list parameters for the query
 // example use: synchronizeDBs(sql, [status, last_updated])
 function synchronizeUpdateDeleteDBs(sql, query_params){
     // Slave 1
@@ -235,9 +240,68 @@ function synchronizeUpdateDeleteDBs(sql, query_params){
     db_slave2.query(sql, query_params, (err, result) => {
         if (err) throw err;
     });
+}
 
-    const query = 'SELECT hospitalname FROM clincs GROUP BY hospitalname';
-    
+// SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
+// sql_insert = the actual insert query | clinicid = for checking if it exists in slave 1 or 2 | query_params = list parameters for the query 
+// example use: synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
+function synchronizeAddDBs(sql_insert, clinicid, query_params){
+
+    let clinic_list1, clinic_list2;
+
+    const sql_select1 = `SELECT clinicid 
+                        FROM clinics 
+                        WHERE RegionName IN ( 'National Capital Region (NCR)', 
+                                            'CALABARZON (IV-A)', 
+                                            'Central Luzon (III)', 
+                                            'Ilocos Region (I)', 
+                                            'Cordillera Administrative Region (CAR)', 
+                                            'Cagayan Valley (II)', 
+                                            'MIMAROPA (IV-B)', 
+                                            'Bicol Region (V)')`
+
+    db_slave1.query(sql_select1, query_params, (err, result) => {
+        if (err) throw err
+
+        clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+
+        console.log('Checking Slave 1')
+        if (clinic_list1.includes(clinicid)) {
+            db_slave1.query(sql_insert, query_params, (err, result) => {
+                if (err) throw err
+
+                console.log('INSERT success -> Slave 1')
+            })
+        }
+    });
+
+    const sql_select2 = `SELECT clinicid
+                        FROM clinics
+                        WHERE RegionName IN ( 'Central Visayas (VII)',
+                                            'Western Visayas (VI)',
+                                            'Eastern Visayas (VIII)',
+                                            'Davao Region (XI)',
+                                            'Northern Mindanao (X)',
+                                            'Zamboanga Peninsula (IX)',
+                                            'SOCCSKSARGEN (Cotabato Region) (XII)',
+                                            'Caraga (XIII)',
+                                            'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
+                                            );`
+
+    db_slave2.query(sql_select2, query_params, (err, result) => {
+        if (err) throw err
+
+        clinic_list2 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+        
+        console.log('Checking Slave 2')
+        if (clinic_list2.includes(clinicid)) {
+            db_slave2.query(sql_insert, query_params, (err, result) => {
+                if (err) throw err
+
+                console.log('INSERT success -> Slave 2')
+            })
+        }
+    });
 
 }
 

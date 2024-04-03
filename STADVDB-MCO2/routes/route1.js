@@ -67,19 +67,19 @@ app.get('/addAppointments', (req, res) => {
 });
 
 function formatDate(dateString) {
-    console.log("Formatting date:", dateString); // Log input
+    // console.log("Formatting date:", dateString);
     try {
       const date = new Date(dateString);
       if (!isNaN(date.getTime())) {
         const formattedDate = date.toISOString().slice(0, 10);
-        console.log("Formatted date:", formattedDate); // Log output
+        // console.log("Formatted date:", formattedDate); 
         return formattedDate;
       } else {
-        console.log("Date is invalid");
+        // console.log("Date is invalid");
         return 'Invalid date';
       }
     } catch (error) {
-      console.error("Error formatting date:", error);
+    //   console.error("Error formatting date:", error);
       return 'Error formatting date';
     }
 }
@@ -115,21 +115,18 @@ app.get('/reports', async(req, res) => {
 app.get('/viewSearch', (req, res) => {
     let sql = 'SELECT * FROM appointments LIMIT 500';
     const searchTerm = req.query.searchTerm;
+    const searchColumn = req.query.searchColumn || 'apptcode';
 
     if (searchTerm) {
-        // Adjust this SQL query based on your search criteria and database schema
-        sql = 'SELECT * FROM appointments WHERE apptcode LIKE ? LIMIT 500';
-        // Use parameterized queries to avoid SQL injection
+        sql = `SELECT * FROM appointments WHERE ${db.escapeId(searchColumn)} LIKE ? LIMIT 500`;
         db.query(sql, [`%${searchTerm}%`], (err, results) => {
             if (err) throw err;
-            // Pass the formatDate function to the EJS template
-            res.render('viewSearch', { appointments: results, formatDate: formatDate });
+            res.render('viewSearch', { appointments: results, formatDate: formatDate, searchColumn: searchColumn });
         });
     } else {
         db.query(sql, (err, results) => {
             if (err) throw err;
-            // Pass the formatDate function to the EJS template
-            res.render('viewSearch', { appointments: results, formatDate: formatDate });
+            res.render('viewSearch', { appointments: results, formatDate: formatDate, searchColumn: searchColumn });
         });
     }
 });

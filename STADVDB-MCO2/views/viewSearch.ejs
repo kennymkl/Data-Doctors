@@ -92,8 +92,15 @@
     <div class="container" id="records">
         <h1>Search Appointments</h1>
         <form action="/viewSearch" method="GET" style="margin-bottom: 20px;">
-            <label for="searchTerm">Search by Appointment Code:</label>
-            <input type="text" id="searchTerm" name="searchTerm" placeholder="Enter ApptCode...">
+            <label for="searchColumn">Search By:</label>
+        <select id="searchColumn" name="searchColumn">
+        <option value="apptcode" <% if (searchColumn === 'apptcode') { %>selected<% } %>>Appointment Code</option>
+        <option value="doctorid" <% if (searchColumn === 'doctorid') { %>selected<% } %>>Doctor ID</option>
+        <option value="pxid" <% if (searchColumn === 'pxid') { %>selected<% } %>>Patient ID</option>
+        <option value="clinicid" <% if (searchColumn === 'clinicid') { %>selected<% } %>>Clinic ID</option>
+        <option value="status" <% if (searchColumn === 'status') { %>selected<% } %>>Status</option>
+             </select>
+            <input type="text" id="searchTerm" name="searchTerm" placeholder="Enter search term...">
             <button type="submit" class="btn">Search</button>
         </form>
 

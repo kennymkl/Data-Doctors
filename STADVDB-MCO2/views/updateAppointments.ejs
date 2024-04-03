@@ -107,6 +107,7 @@
         <h1>Update Appointment</h1>
         <p class="reference-text">Appointment Code: <%= apptcode %></p>
         <p class="reference-text">Clinic ID: <%= clinicid %></p>
+        <p class="reference-text">Region Name: <%= regionName %></p>
         <form action="/submitUpdate" method="POST">
             <div class="input-group">
                 <label for="status">Status:</label>
@@ -122,7 +123,7 @@
         </form>
     </div>
     <div style="text-align: center; margin-top: 20px;">
-        <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+        <button class="btn" onclick="window.location.href='/viewSearch';">Back to Search Page</button>
     </div>
 </body>
 </html>

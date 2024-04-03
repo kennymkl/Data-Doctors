@@ -2,7 +2,6 @@
 const express = require('express');
 const path = require('path');
 const app = express();
-const router = express.Router();
 const mysql = require('mysql');
 
 // MASTER
@@ -133,6 +132,7 @@ app.get('/viewSearch', (req, res) => {
 
 app.get('/updateAppointments/:apptcode', (req, res) => {
     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
+    
     db.query(sql, [req.params.apptcode], (err, results) => {
         if (err) throw err;
         if (results.length > 0) {
@@ -143,12 +143,22 @@ app.get('/updateAppointments/:apptcode', (req, res) => {
             if (!isNaN(date.getTime())) {
                 appointmentData.queuedate = date.toISOString().slice(0,16);
             } else {
-                console.error('Invalid date for appointment', appointmentData.apptcode);
+                // console.error('Invalid date for appointment', appointmentData.apptcode);
                 // Handle invalid date, perhaps by setting a default value or leaving it empty
                 appointmentData.queuedate = ''; // or set a default/fallback value
             }
-
-            res.render('updateAppointments', { ...appointmentData });
+            const sql2 = 'SELECT RegionName FROM clinics WHERE ClinicID = ?';
+            db.query(sql2, [appointmentData.clinicid], (err2, results2) => {
+                if (err2) throw err2;
+                if (results2.length > 0) {
+                    // Add the RegionName to the appointment data
+                    appointmentData.regionName = results2[0].RegionName;
+                } else {
+                    console.error('Clinic not found for ClinicID', appointmentData.clinicid);
+                    appointmentData.regionName = 'Unknown Region';
+                }
+                res.render('updateAppointments', { ...appointmentData });
+            });
         } else {
             // Handle case where no appointment is found
             res.send('Appointment not found');

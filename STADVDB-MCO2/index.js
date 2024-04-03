@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
 const app = express();
-const mysql = require('mysql');
 const routes = require('./routes/route1.js')
 
 app.use(express.urlencoded({ extended: true }));

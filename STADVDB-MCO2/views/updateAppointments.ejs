@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Appointment</title>
+    <style>
+        body, html {
+            margin: 0;
+            margin-top: 15px;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        h1{
+            padding-top: 20px;
+        }
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            background-color: #ffffff;
+            color: gray;
+            position: fixed;
+            width: calc(100% - 40px);
+            top: 0;
+            padding-top: 15px;
+            z-index: 1000;
+            border-bottom: 2px solid gray;
+        }
+        nav img.logo {
+            height: 50px;
+            width: auto;
+        }
+        nav a {
+            color: black;
+            text-decoration: none;
+            margin-left: 10px;
+            transition-duration: 0.4s;
+        }
+        nav a:hover {
+            opacity: 0.8;
+        }
+        .btn, .btn-back, .btn-back, .edit-btn, .delete.btn {
+            background-color: #1aa99e;
+            color: white;
+            padding: 10px 120px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .edit-btn {
+            text-decoration: none;
+        }
+        .btn-back {
+            margin-left: 40px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 35px;
+            margin-bottom: -30px;
+            width: 30%;
+            padding: 20px;
+            margin: auto;
+        }
+        .form-btn {
+            display: block;
+            width: 100%;
+        }
+        .delete-btn {
+            background-color: #f44336;
+        }
+        .input-group label, .input-group input, .reference-text {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .input-group input {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .reference-text {
+            margin: 5px 0;
+            padding: 10px;
+            background-color: #f2f2f2;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/"><img src="/images/serious-md-logo.png" alt="Logo" class="logo"></a>
+        <div>
+            <a href="/">CLEMENTE</a>
+            <a href="/">RACELA</a>
+            <a href="/">VILLARAMA</a>
+        </div>                           
+    </nav>
+    <div class="container">
+        <h1>Update Appointment</h1>
+        <p class="reference-text">Appointment Code: <%= apptcode %></p>
+        <p class="reference-text">Clinic ID: <%= clinicid %></p>
+        <form action="/submitUpdate" method="POST">
+            <div class="input-group">
+                <label for="status">Status:</label>
+                <input type="text" id="status" name="status" value="<%= status %>" placeholder="<%= status %>" required>
+            </div>
+            <input type="hidden" name="apptcode" value="<%= apptcode %>">
+            <button type="submit" class="btn form-btn">Update Appointment</button>
+        </form>
+        
+        <form action="/deleteAppointment" method="POST">
+            <input type="hidden" name="apptcode" value="<%= apptcode %>">
+            <button type="submit" class="btn delete-btn form-btn">Delete Appointment</button>
+        </form>
+    </div>
+    <div style="text-align: center; margin-top: 20px;">
+        <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
+    </div>
+</body>
+</html>

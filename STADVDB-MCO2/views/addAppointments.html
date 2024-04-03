@@ -4,54 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Add Appointments</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .btn {
+            background-color: #736fdc;
+            color: white;
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .input-group input {
+            width: calc(100% - 22px); /* Adjust input width */
+            padding: 10px;
+            margin-bottom: 10px; /* Provides space between inputs */
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
+        <h1>Add New Appointment</h1>
         <!-- Form for adding a new appointment -->
         <form action="/insertAppointment" method="post" id="addForm">
             <div class="input-group">
-                <label for="apptid">Appointment ID:</label>
-                <input type="text" id="apptid" name="apptid" value="FCEB4030B051CCDEAB7A5C0806A962BD">
-            </div>
-            <div class="input-group">
-                <label for="clinicid">Clinic ID:</label>
+                <label for="clinicid">Clinic ID: </label>
                 <input type="text" id="clinicid" name="clinicid" value="MISSING">
             </div>
             <div class="input-group">
-                <label for="doctorid">Doctor ID:</label>
+                <label for="doctorid">Doctor ID: </label>
                 <input type="text" id="doctorid" name="doctorid" value="MISSING">
             </div>
-            
             <div class="input-group">
-                <label for="pxid">Patient ID:</label>
+                <label for="pxid">Patient ID: </label>
                 <input type="text" id="pxid" name="pxid" value="MISSING">
             </div>
-            
             <div class="input-group">
-                <label for="status">Status:</label>
+                <label for="status">Status: </label>
                 <input type="text" id="status" name="status" placeholder="Queued" value="Queued">
             </div>
-            
             <div class="input-group">
-                <label for="queuedate">Queued Date:</label>
-                <input type="datetime-local" id="queuedate" name="queuedate" placeholder="NULL" value="">
+                <label for="queuedate">Queued Date: </label>
+                <input type="datetime-local" id="queuedate" name="queuedate">
             </div>
-            
             <div class="input-group">
-                <label for="type">Type:</label>
-                <input type="text" id="type" name="type" placeholder="NULL" value="">
+                <label for="type">Type: </label>
+                <input type="text" id="type" name="type" placeholder="NULL" value="NULL">
             </div>
-            
             <div class="input-group">
-                <label for="virtualind">Virtual:</label>
-                <input type="text" id="virtualind" name="virtualind" placeholder="NULL" value="">
+                <label for="virtualind">Virtual Indicator: </label>
+                <input type="text" id="virtualind" name="virtualind" placeholder="NULL" value="NULL">
             </div>
-            
-            <button type="submit" class="btn">Add this Appointment</button>
+            <button type="submit" class="btn">Submit</button>
         </form>  
     </div>
-    <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
-    <script src="/js/script.js"></script>
+    <button class="btn" style="margin-top: 20px;" onclick="window.location.href='/';">Back to Main Page</button>
 </body>
 </html>

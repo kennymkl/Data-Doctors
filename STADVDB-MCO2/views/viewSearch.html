@@ -4,15 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>View and Search Appointments</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .btn, .edit-btn {
+            background-color: #736fdc;
+            color: white;
+            padding: 5px 10px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: none; /* Removes underline from edit buttons */
+        }
+        table {
+            width: 100%; 
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            text-align: left;
+            padding: 8px;
+        }
+        th {
+            background-color: #736fdc;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+    </style>
 </head>
 <body>
     <div class="container" id="records">
         <h1>Search Appointments</h1>
-        <form action="/viewSearch" method="GET">
+        <form action="/viewSearch" method="GET" style="margin-bottom: 20px;">
             <label for="searchTerm">Search by Appointment Code:</label>
             <input type="text" id="searchTerm" name="searchTerm" placeholder="Enter ApptCode...">
-            <button type="submit">Search</button>
+            <button type="submit" class="btn">Search</button>
         </form>
 
         <% if (appointments && appointments.length > 0) { %>
@@ -46,7 +82,6 @@
             <p>No appointments found.</p>
         <% } %>
     </div>
-    <button class="btn" onclick="window.location.href='/';">Back to Main Page</button>
-    <script src="/js/script.js"></script>
+    <button class="btn" style="margin-top: 20px;" onclick="window.location.href='/';">Back to Main Page</button>
 </body>
 </html>

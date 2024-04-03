@@ -9,7 +9,7 @@ const mysql = require('mysql');
 var db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'pipowasher3', //change password to specific credentials
+    password: 'admin123', //change password to specific credentials
     database: 'mco2'
   });
 
@@ -17,14 +17,14 @@ var db = mysql.createConnection({
     if (err) {
       throw err;
     }
-    console.log('Connected to the MySQL server.');
+    console.log('MASTER - Connected to the MySQL server.');
   });
 
 // SLAVE 1
 var db_slave1 = mysql.createConnection({
 host: 'localhost',
 user: 'root',
-password: 'pipowasher3', //change password to specific credentials
+password: 'admin123', //change password to specific credentials
 database: 'mco2slave1'
 });
 
@@ -32,14 +32,14 @@ database: 'mco2slave1'
     if (err) {
       throw err;
     }
-    console.log('Connected to the MySQL server.');
+    console.log('SLAVE 1 - Connected to the MySQL server.');
   });
 
 // SLAVE 2
 var db_slave2 = mysql.createConnection({
 host: 'localhost',
 user: 'root',
-password: 'pipowasher3', //change password to specific credentials
+password: 'admin123', //change password to specific credentials
 database: 'mco2slave2'
 });
 
@@ -47,7 +47,7 @@ database: 'mco2slave2'
     if (err) {
       throw err;
     }
-    console.log('Connected to the MySQL server.');
+    console.log('SLAVE 2 - Connected to the MySQL server.');
   });
 
 

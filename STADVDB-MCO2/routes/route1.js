@@ -5,10 +5,11 @@ const app = express();
 const router = express.Router();
 const mysql = require('mysql');
 
+// MASTER
 var db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'melgeoffrey', //change password to specific credentials
+    password: 'pipowasher3', //change password to specific credentials
     database: 'mco2'
   });
 
@@ -18,6 +19,37 @@ var db = mysql.createConnection({
     }
     console.log('Connected to the MySQL server.');
   });
+
+// SLAVE 1
+var db_slave1 = mysql.createConnection({
+host: 'localhost',
+user: 'root',
+password: 'pipowasher3', //change password to specific credentials
+database: 'mco2slave1'
+});
+
+  db_slave1.connect((err) => {
+    if (err) {
+      throw err;
+    }
+    console.log('Connected to the MySQL server.');
+  });
+
+// SLAVE 2
+var db_slave2 = mysql.createConnection({
+host: 'localhost',
+user: 'root',
+password: 'pipowasher3', //change password to specific credentials
+database: 'mco2slave2'
+});
+
+  db_slave2.connect((err) => {
+    if (err) {
+      throw err;
+    }
+    console.log('Connected to the MySQL server.');
+  });
+
 
 app.get('/', (req, res) => {
     res.render('index');
@@ -129,16 +161,20 @@ app.get('/updateAppointments/:apptcode', (req, res) => {
 
 app.post('/submitUpdate', (req, res) => {
     // Extract updated values from req.body
-    const { apptcode, status, type } = req.body;
+    const { apptcode, status} = req.body;
 
     // SQL to update appointment in database
-    const sql = 'UPDATE appointments SET status = ?, type = ? WHERE apptcode = ?';
+    const sql = 'UPDATE appointments SET status = ? WHERE apptcode = ?';
 
-    db.query(sql, [status, type, apptcode], (err, result) => {
+    db.query(sql, [status, apptcode], (err, result) => {
         if (err) throw err;
         // Redirect back to the appointments list, or show a success message
-        res.redirect('/viewSearch');
-    });
+        // res.redirect('/viewSearch');
+    })
+    // Function to Update/Delete the corresponding row in Slave 1 or 2 - for synchronizing
+    synchronizeUpdateDeleteDBs(sql, [status, apptcode])
+
+    return res.redirect('/viewSearch');
 });
 
 app.post('/deleteAppointment', (req, res) => {
@@ -151,8 +187,11 @@ app.post('/deleteAppointment', (req, res) => {
             return res.status(500).send('Error deleting appointment. Please try again.');
         }
         console.log('Appointment deleted successfully');
-        res.redirect('/viewSearch');
     });
+    // Function to Update/Delete the corresponding row in Slave 1 or 2
+    synchronizeUpdateDeleteDBs(sql, [apptcode]);
+
+    res.redirect('/viewSearch');
 });
 
 app.post('/insertAppointment', (req, res) => {
@@ -183,5 +222,23 @@ app.post('/insertAppointment', (req, res) => {
         });
     });
 });
+
+// SYNCHRONIZE WITH SLAVE 1 AND 2
+// sql = the actual query | updated_cols = list parameters for the query
+// example use: synchronizeDBs(sql, [status, last_updated])
+function synchronizeUpdateDeleteDBs(sql, query_params){
+    // Slave 1
+    db_slave1.query(sql, query_params, (err, result) => {
+        if (err) throw err;
+    });
+    // Slave 2
+    db_slave2.query(sql, query_params, (err, result) => {
+        if (err) throw err;
+    });
+
+    const query = 'SELECT hospitalname FROM clincs GROUP BY hospitalname';
+    
+
+}
 
 module.exports = app;

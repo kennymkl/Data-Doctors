@@ -171,20 +171,34 @@
         </div>
     </div>
     <script>
-        // Existing JavaScript functionality
+        //Hide all reports
+        function hideAllReports() {
+            document.getElementById("appointmentsYearReport").style.display = "none";
+            document.getElementById("averageAgeReport").style.display = "none";
+            document.getElementById("statusReport").style.display = "none";
+        }
+    
+        //Show Appointments per Year report and hide others
         document.getElementById("btnAppointmentsYear").onclick = function() {
+            hideAllReports(); // First, hide all reports
             var report = document.getElementById("appointmentsYearReport");
-            report.style.display = report.style.display === "none" ? "block" : "none";
+            report.style.display = "block"; // Then, show this report
         };
+    
+        //Show Average Age of Patients report and hide others
         document.getElementById("btnAverageAge").onclick = function() {
+            hideAllReports(); // First, hide all reports
             var report = document.getElementById("averageAgeReport");
-            report.style.display = report.style.display === "none" ? "block" : "none";
+            report.style.display = "block"; // Then, show this report
         };
-        // New report functionality
+    
+        //Show No. of Appointments per Status report and hide others
         document.getElementById("btnStatusReport").onclick = function() {
+            hideAllReports(); // First, hide all reports
             var report = document.getElementById("statusReport");
-            report.style.display = report.style.display === "none" ? "block" : "none";
+            report.style.display = "block"; // Then, show this report
         };
     </script>
+    
 </body>
 </html>

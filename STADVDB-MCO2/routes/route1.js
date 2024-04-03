@@ -9,7 +9,7 @@ const mysql = require('mysql');
 var db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'admin123', //change password to specific credentials
+    password: 'melgeoffrey', //change password to specific credentials
     database: 'mco2'
   });
 
@@ -24,7 +24,7 @@ var db = mysql.createConnection({
 var db_slave1 = mysql.createConnection({
 host: 'localhost',
 user: 'root',
-password: 'admin123', //change password to specific credentials
+password: 'melgeoffrey', //change password to specific credentials
 database: 'mco2slave1'
 });
 
@@ -39,7 +39,7 @@ database: 'mco2slave1'
 var db_slave2 = mysql.createConnection({
 host: 'localhost',
 user: 'root',
-password: 'admin123', //change password to specific credentials
+password: 'melgeoffrey', //change password to specific credentials
 database: 'mco2slave2'
 });
 

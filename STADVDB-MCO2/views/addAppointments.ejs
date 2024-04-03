@@ -90,23 +90,27 @@
         <form action="/insertAppointment" method="post" id="addForm">
             <div class="input-group">
                 <label for="clinicid">Appointment Code: </label>
-                <input type="text" id="clinicid" name="apptcode" placeholder="Insert number" value="">
+                <input type="text" id="clinicid" name="apptcode" placeholder="Enter code or leave blank">
+            </div>
+            <div class="input-group">
+                <label for="apptid">Appointment ID:</label>
+                <input type="text" id="apptid" name="apptid" placeholder="Enter apptid" value="MISSING" required>
             </div>
             <div class="input-group">
                 <label for="clinicid">Clinic ID: </label>
-                <input type="text" id="clinicid" name="clinicid" value="MISSING">
+                <input type="text" id="clinicid" name="clinicid" placeholder="Enter clinicid" value="MISSING" required>
             </div>
             <div class="input-group">
                 <label for="doctorid">Doctor ID: </label>
-                <input type="text" id="doctorid" name="doctorid" value="MISSING">
+                <input type="text" id="doctorid" name="doctorid" placeholder="Enter doctorid" value="MISSING" required>
             </div>
             <div class="input-group">
                 <label for="pxid">Patient ID: </label>
-                <input type="text" id="pxid" name="pxid" value="MISSING">
+                <input type="text" id="pxid" name="pxid" placeholder="Enter pxid" value="MISSING" required>
             </div>
             <div class="input-group">
                 <label for="status">Status: </label>
-                <input type="text" id="status" name="status" value="Queued">
+                <input type="text" id="status" name="status" placeholder="Enter status" value="Queued">
             </div>
             <div class="input-group">
                 <label for="queuedate">Queued Date: </label>

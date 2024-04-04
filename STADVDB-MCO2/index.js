@@ -12,16 +12,11 @@ app.set('view engine', 'ejs');
 app.engine('html', require('ejs').renderFile);
 app.use(express.static('public'));
 app.use('/', routes)
-app.listen(3000, () => {
-    console.log('Server started on http://localhost:3000');
-    console.log(path.join(__dirname, 'views', 'images'));
-});
 
 app.listen(3000, () => {
     console.log('Server started on http://localhost:3000');
     console.log(path.join(__dirname, 'views', 'images'));
 });
-
 
 /*
 app.listen(80, '0.0.0.0', () => {

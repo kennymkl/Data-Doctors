@@ -2,55 +2,69 @@
 const express = require('express');
 const path = require('path');
 const app = express();
-const mysql = require('mysql');
+const mysql = require('mysql2');
 
-// MASTER
-var db = mysql.createConnection({
+const masterConfig = {
     host: 'localhost',
     user: 'root',
     password: 'melgeoffrey', //change password to specific credentials
-    database: 'mco2'
-  });
+    database: 'mco2',
+  };
+  
+const slave1Config = { ...masterConfig, database: 'mco2slave1'}; //database names
+const slave2Config = { ...masterConfig, database: 'mco2slave2'}; //database names
 
-  db.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('MASTER - Connected to the MySQL server.');
-  });
+var db = createConnection(masterConfig,'master');
+var db_slave1 = createConnection(slave1Config,'slave1');
+var db_slave2 = createConnection(slave2Config,'slave2');
 
-// SLAVE 1
-var db_slave1 = mysql.createConnection({
-host: 'localhost',
-user: 'root',
-password: 'melgeoffrey', //change password to specific credentials
-database: 'mco2slave1'
-});
+function createConnection(config,label) {
+    let connection = mysql.createConnection(config);
+  
+    connection.connect((err) => {
+      if (err) {
+        console.error(`${label} - Error connecting to the MySQL server`);
+        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds
+      } else {
+        console.log(`${label} - Connected to the MySQL server.`);
+      }
+    });
+  
+    connection.on('error', (err) => {
+      console.error(`${label} - MySQL error:`, err);
+      if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        createConnection(config); // Reconnect if the connection is lost
+      } else {
+        throw err;
+      }
+    });
+  
+    return connection;
+  }
 
-  db_slave1.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('SLAVE 1 - Connected to the MySQL server.');
-  });
+function checkConnection(connection, config, label) {
+    connection.query('SELECT 1', (err) => {
+      if (err) {
+        console.error(`${label} - Lost connection...`);
+        // The connection is destroyed, attempt to reconnect
+        //createConnection(config, label); 
+        //^--Commented this out muna para macontrol
+      } else {
+        console.log(`${label} - Connection is healthy.`);
+      }
+    });
+  }
 
-// SLAVE 2
-var db_slave2 = mysql.createConnection({
-host: 'localhost',
-user: 'root',
-password: 'melgeoffrey', //change password to specific credentials
-database: 'mco2slave2'
-});
+  function checkConnections(){
+    checkConnection(db,masterConfig,'master')
+    checkConnection(db_slave1,slave1Config,'slave1')
+    checkConnection(db_slave2,slave1Config,'slave2')
+  }
 
-  db_slave2.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('SLAVE 2 - Connected to the MySQL server.');
-  });
-
+//---------------End of Database Part----------------------------
 
 app.get('/', (req, res) => {
+    checkConnections() //Placed checking all connections here
     res.render('index');
 });
 
@@ -58,7 +72,7 @@ app.set('views', path.join(__dirname, '..','views'));
 // Serve the Add Appointments page
 app.get('/addAppointments', (req, res) => {
     const sql = 'SELECT * FROM appointments LIMIT 500';
-    
+
     db.query(sql, (err, results) => {
         if (err) throw err;
         res.render('addAppointments', { appointments: results });

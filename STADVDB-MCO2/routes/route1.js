@@ -10,7 +10,7 @@ const masterConfig = {
     password: 'melgeoffrey', //change password to specific credentials
     database: 'mco2',
   };
-  
+                            //when updating in the vms, add a host:  
 const slave1Config = { ...masterConfig, database: 'mco2slave1'}; //database names
 const slave2Config = { ...masterConfig, database: 'mco2slave2'}; //database names
 

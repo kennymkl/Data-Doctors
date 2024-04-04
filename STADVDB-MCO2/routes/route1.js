@@ -97,33 +97,89 @@ function formatDate(dateString) {
     }
 }
 
-app.get('/reports', async(req, res) => {
-
-    //all mysql queries for report
+app.get('/reports', async (req, res) => {
     const appointmentsPerYearSql = 'SELECT YEAR(QueueDate) AS AppointmentYear, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY YEAR(QueueDate) ORDER BY AppointmentYear;';
-    const averageAgeSql = 'SELECT YEAR(a.QueueDate) AS AppointmentYear, AVG(p.Age) AS AverageAge FROM appointments a JOIN px p ON a.pxid = p.pxid GROUP BY YEAR(a.QueueDate) ORDER BY AppointmentYear;';
+    const averageAgeSql = 'SELECT YEAR(a.QueueDate) AS AppointmentYear, AVG(p.Age) AS AverageAge, COUNT(*) AS Count FROM appointments a JOIN px p ON a.pxid = p.pxid GROUP BY YEAR(a.QueueDate) ORDER BY AppointmentYear;';
     const statusSql = 'SELECT Status, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY Status ORDER BY NumberOfAppointments DESC;';
-    
-    db.query(appointmentsPerYearSql, (err, appointmentsPerYearResults) => {
-        if (err) throw err;
-          
-        db.query(averageAgeSql, (err, averageAgeResults) => {
-            if (err) throw err;
 
-            db.query(statusSql,(err,statusResults) => {
-            if (err) throw err;
-              
-            // Pass the formatDate function and query results to the template
-            res.render('generateReport', { 
-                yearlyAppointments: appointmentsPerYearResults, 
-                averageAgeAppointments: averageAgeResults,
-                statusAppointments: statusResults,
-                formatDate: formatDate // Pass the function for use in EJS
-            });
+    async function queryDatabase(db, sql) {
+        return new Promise((resolve, reject) => {
+            db.query(sql, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
             });
         });
-    });
+    }
+
+    async function aggregateQueryResults(sql, keyColumn, countColumn) {
+        const results1 = await queryDatabase(db_slave1, sql);
+        const results2 = await queryDatabase(db_slave2, sql);
+
+        let combinedResults = {};
+        [...results1, ...results2].forEach(result => {
+            if (!combinedResults[result[keyColumn]]) {
+                combinedResults[result[keyColumn]] = 0;
+            }
+            combinedResults[result[keyColumn]] += result[countColumn];
+        });
+
+        return Object.entries(combinedResults).map(([key, count]) => ({
+            [keyColumn]: key,
+            [countColumn]: count
+        }));
+    }
+
+    async function combineAverageAgeResults(sql) {
+        const results1 = await queryDatabase(db_slave1, sql);
+        const results2 = await queryDatabase(db_slave2, sql);
+
+        let combinedResults = {};
+        [...results1, ...results2].forEach(result => {
+            if (!combinedResults[result.AppointmentYear]) {
+                combinedResults[result.AppointmentYear] = { sumAge: 0, count: 0 };
+            }
+            combinedResults[result.AppointmentYear].sumAge += result.AverageAge * result.Count;
+            combinedResults[result.AppointmentYear].count += result.Count;
+        });
+
+        return Object.entries(combinedResults).map(([year, data]) => ({
+            AppointmentYear: year,
+            AverageAge: data.sumAge / data.count
+        }));
+    }
+
+    try {
+        const [appointmentsPerYearResults, averageAgeResults, statusResults] = await Promise.all([
+            queryDatabase(db, appointmentsPerYearSql),
+            queryDatabase(db, averageAgeSql),
+            queryDatabase(db, statusSql)
+        ]);
+
+        res.render('generateReport', {
+            yearlyAppointments: appointmentsPerYearResults,
+            averageAgeAppointments: averageAgeResults,
+            statusAppointments: statusResults,
+            formatDate: formatDate
+        });
+    } catch (error) {
+        try {
+            const yearlyAppointments = await aggregateQueryResults(appointmentsPerYearSql, 'AppointmentYear', 'NumberOfAppointments');
+            const averageAgeAppointments = await combineAverageAgeResults(averageAgeSql);
+            const statusAppointments = await aggregateQueryResults(statusSql, 'Status', 'NumberOfAppointments');
+
+            res.render('generateReport', {
+                yearlyAppointments,
+                averageAgeAppointments,
+                statusAppointments,
+                formatDate: formatDate
+            });
+        } catch (slaveError) {
+            res.status(500).send('Unable to generate report' + slaveError);
+        }
+    }
 });
+
+
 
 
 app.get('/viewSearch', (req, res) => {

@@ -125,7 +125,9 @@ app.get('/reports', async(req, res) => {
     });
 });
 
+
 app.get('/viewSearch', (req, res) => {
+    try{
     let sql = 'SELECT * FROM appointments LIMIT 500';
     const searchTerm = req.query.searchTerm;
     const searchColumn = req.query.searchColumn || 'apptcode';
@@ -142,6 +144,59 @@ app.get('/viewSearch', (req, res) => {
             res.render('viewSearch', { appointments: results, formatDate: formatDate, searchColumn: searchColumn });
         });
     }
+
+   }
+   catch(error){ //Master node is down so since specs say only one db down at a time:
+    let sql = 'SELECT * FROM appointments LIMIT 500';
+    const searchTerm = req.query.searchTerm;
+    const searchColumn = req.query.searchColumn || 'apptcode';
+
+//query a database
+function queryDatabase(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+        });
+    });
+}
+
+//Function to merge and unique the results from both databases
+function mergeResults(results1, results2) {
+    const combinedResults = [...results1, ...results2];
+    combinedResults.sort((a, b) => a.apptcode - b.apptcode);
+    return combinedResults;
+}
+
+
+if (searchTerm) {
+    sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+    const searchParams = [`%${searchTerm}%`];
+    
+    Promise.all([
+        queryDatabase(db_slave1, sql, searchParams),
+        queryDatabase(db_slave2, sql, searchParams)
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+} else {
+    Promise.all([
+        queryDatabase(db_slave1, sql, []),
+        queryDatabase(db_slave2, sql, [])
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+}
+    
+   }
 });
 
 app.get('/updateAppointments/:apptcode', (req, res) => {

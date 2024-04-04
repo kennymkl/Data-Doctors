@@ -16,3 +16,18 @@ app.listen(3000, () => {
     console.log('Server started on http://localhost:3000');
     console.log(path.join(__dirname, 'views', 'images'));
 });
+
+app.listen(3000, () => {
+    console.log('Server started on http://localhost:3000');
+    console.log(path.join(__dirname, 'views', 'images'));
+});
+
+
+/*
+app.listen(80, '0.0.0.0', () => {
+    console.log('Server started on http://ccscloud.dlsu.edu.ph:20081');
+    console.log('Server started on http://ccscloud.dlsu.edu.ph:20082');
+    console.log('Server started on http://ccscloud.dlsu.edu.ph:20083');
+});
+
+*/

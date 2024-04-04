@@ -5,52 +5,66 @@ const app = express();
 const mysql = require('mysql');
 
 // MASTER
-var db = mysql.createConnection({
+const masterConfig = {
     host: 'localhost',
     user: 'root',
     password: 'melgeoffrey', //change password to specific credentials
-    database: 'mco2'
-  });
+    database: 'mco2',
+  };
+                            //when updating in the vms, add a host:  
+const slave1Config = { ...masterConfig, database: 'mco2slave1'}; //database names
+const slave2Config = { ...masterConfig, database: 'mco2slave2'}; //database names
 
-  db.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('MASTER - Connected to the MySQL server.');
-  });
+var db = createConnection(masterConfig,'master');
+var db_slave1 = createConnection(slave1Config,'slave1');
+var db_slave2 = createConnection(slave2Config,'slave2');
 
-// SLAVE 1
-var db_slave1 = mysql.createConnection({
-host: 'localhost',
-user: 'root',
-password: 'melgeoffrey', //change password to specific credentials
-database: 'mco2slave1'
-});
+function createConnection(config,label) {
+    let connection = mysql.createConnection(config);
+  
+    connection.connect((err) => {
+      if (err) {
+        console.error(`${label} - Error connecting to the MySQL server`);
+        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds
+      } else {
+        console.log(`${label} - Connected to the MySQL server.`);
+      }
+    });
+  
+    connection.on('error', (err) => {
+      console.error(`${label} - MySQL error:`, err);
+      if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        createConnection(config); // Reconnect if the connection is lost
+      } else {
+        throw err;
+      }
+    });
+  
+    return connection;
+  }
 
-  db_slave1.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('SLAVE 1 - Connected to the MySQL server.');
-  });
+function checkConnection(connection, config, label) {
+    connection.query('SELECT 1', (err) => {
+      if (err) {
+        console.error(`${label} - Lost connection...`);
+        // The connection is destroyed, attempt to reconnect
+        //createConnection(config, label); 
+        //^--Commented this out muna para macontrol
+      } else {
+        console.log(`${label} - Connection is healthy.`);
+      }
+    });
+  }
 
-// SLAVE 2
-var db_slave2 = mysql.createConnection({
-host: 'localhost',
-user: 'root',
-password: 'melgeoffrey', //change password to specific credentials
-database: 'mco2slave2'
-});
-
-  db_slave2.connect((err) => {
-    if (err) {
-      throw err;
-    }
-    console.log('SLAVE 2 - Connected to the MySQL server.');
-  });
+  function checkConnections(){
+    checkConnection(db,masterConfig,'master')
+    checkConnection(db_slave1,slave1Config,'slave1')
+    checkConnection(db_slave2,slave1Config,'slave2')
+  }
 
 
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+    checkConnections()
     res.render('index');
 });
 
@@ -83,54 +97,178 @@ function formatDate(dateString) {
     }
 }
 
-app.get('/reports', async(req, res) => {
-
-    //all mysql queries for report
+app.get('/reports', async (req, res) => {
     const appointmentsPerYearSql = 'SELECT YEAR(QueueDate) AS AppointmentYear, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY YEAR(QueueDate) ORDER BY AppointmentYear;';
-    const averageAgeSql = 'SELECT YEAR(a.QueueDate) AS AppointmentYear, AVG(p.Age) AS AverageAge FROM appointments a JOIN px p ON a.pxid = p.pxid GROUP BY YEAR(a.QueueDate) ORDER BY AppointmentYear;';
+    const averageAgeSql = 'SELECT YEAR(a.QueueDate) AS AppointmentYear, AVG(p.Age) AS AverageAge, COUNT(*) AS Count FROM appointments a JOIN px p ON a.pxid = p.pxid GROUP BY YEAR(a.QueueDate) ORDER BY AppointmentYear;';
     const statusSql = 'SELECT Status, COUNT(ApptCode) AS NumberOfAppointments FROM appointments GROUP BY Status ORDER BY NumberOfAppointments DESC;';
-    
-    db.query(appointmentsPerYearSql, (err, appointmentsPerYearResults) => {
-        if (err) throw err;
-          
-        db.query(averageAgeSql, (err, averageAgeResults) => {
-            if (err) throw err;
 
-            db.query(statusSql,(err,statusResults) => {
-            if (err) throw err;
-              
-            // Pass the formatDate function and query results to the template
-            res.render('generateReport', { 
-                yearlyAppointments: appointmentsPerYearResults, 
-                averageAgeAppointments: averageAgeResults,
-                statusAppointments: statusResults,
-                formatDate: formatDate // Pass the function for use in EJS
-            });
+    async function queryDatabase(db, sql) {
+        return new Promise((resolve, reject) => {
+            db.query(sql, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
             });
         });
-    });
+    }
+
+    async function aggregateQueryResults(sql, keyColumn, countColumn) {
+        const results1 = await queryDatabase(db_slave1, sql);
+        const results2 = await queryDatabase(db_slave2, sql);
+
+        let combinedResults = {};
+        [...results1, ...results2].forEach(result => {
+            if (!combinedResults[result[keyColumn]]) {
+                combinedResults[result[keyColumn]] = 0;
+            }
+            combinedResults[result[keyColumn]] += result[countColumn];
+        });
+
+        return Object.entries(combinedResults).map(([key, count]) => ({
+            [keyColumn]: key,
+            [countColumn]: count
+        }));
+    }
+
+    async function combineAverageAgeResults(sql) {
+        const results1 = await queryDatabase(db_slave1, sql);
+        const results2 = await queryDatabase(db_slave2, sql);
+
+        let combinedResults = {};
+        [...results1, ...results2].forEach(result => {
+            if (!combinedResults[result.AppointmentYear]) {
+                combinedResults[result.AppointmentYear] = { sumAge: 0, count: 0 };
+            }
+            combinedResults[result.AppointmentYear].sumAge += result.AverageAge * result.Count;
+            combinedResults[result.AppointmentYear].count += result.Count;
+        });
+
+        return Object.entries(combinedResults).map(([year, data]) => ({
+            AppointmentYear: year,
+            AverageAge: data.sumAge / data.count
+        }));
+    }
+
+    try {
+        const [appointmentsPerYearResults, averageAgeResults, statusResults] = await Promise.all([
+            queryDatabase(db, appointmentsPerYearSql),
+            queryDatabase(db, averageAgeSql),
+            queryDatabase(db, statusSql)
+        ]);
+
+        res.render('generateReport', {
+            yearlyAppointments: appointmentsPerYearResults,
+            averageAgeAppointments: averageAgeResults,
+            statusAppointments: statusResults,
+            formatDate: formatDate
+        });
+    } catch (error) {
+        try {
+            const yearlyAppointments = await aggregateQueryResults(appointmentsPerYearSql, 'AppointmentYear', 'NumberOfAppointments');
+            const averageAgeAppointments = await combineAverageAgeResults(averageAgeSql);
+            const statusAppointments = await aggregateQueryResults(statusSql, 'Status', 'NumberOfAppointments');
+
+            res.render('generateReport', {
+                yearlyAppointments,
+                averageAgeAppointments,
+                statusAppointments,
+                formatDate: formatDate
+            });
+        } catch (slaveError) {
+            res.status(500).send('Unable to generate report' + slaveError);
+        }
+    }
 });
 
-app.get('/viewSearch', (req, res) => {
+app.get('/viewSearch', async (req, res) => {
+    try {
+        let sql = 'SELECT * FROM appointments LIMIT 500';
+        const searchTerm = req.query.searchTerm;
+        const searchColumn = req.query.searchColumn || 'apptcode';
+
+        // Adjust SQL if there's a search term
+        if (searchTerm) {
+            sql = `SELECT * FROM appointments WHERE ${db.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+        }
+
+        // Function to execute the query on a single database
+        async function queryDatabase(db, sql, params) {
+            return new Promise((resolve, reject) => {
+                db.query(sql, params, (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                });
+            });
+        }
+
+        // Execute query and handle results or errors
+        let appointments = [];
+        if (searchTerm) {
+            const searchParams = [`%${searchTerm}%`];
+            const results1 = await queryDatabase(db_slave1, sql, searchParams);
+            const results2 = await queryDatabase(db_slave2, sql, searchParams);
+            appointments = mergeResults(results1, results2).slice(0, 500);
+        } else {
+            const results1 = await queryDatabase(db_slave1, sql, []);
+            const results2 = await queryDatabase(db_slave2, sql, []);
+            appointments = mergeResults(results1, results2).slice(0, 500);
+        }
+
+        res.render('viewSearch', { appointments, formatDate: formatDate, searchColumn: searchColumn });
+    }
+   catch(error){ //Master node is down so since specs say only one db down at a time:
     let sql = 'SELECT * FROM appointments LIMIT 500';
     const searchTerm = req.query.searchTerm;
     const searchColumn = req.query.searchColumn || 'apptcode';
 
-    if (searchTerm) {
-        sql = `SELECT * FROM appointments WHERE ${db.escapeId(searchColumn)} LIKE ? LIMIT 500`;
-        db.query(sql, [`%${searchTerm}%`], (err, results) => {
-            if (err) throw err;
-            res.render('viewSearch', { appointments: results, formatDate: formatDate, searchColumn: searchColumn });
+//query a database
+function queryDatabase(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
         });
-    } else {
-        db.query(sql, (err, results) => {
-            if (err) throw err;
-            res.render('viewSearch', { appointments: results, formatDate: formatDate, searchColumn: searchColumn });
-        });
-    }
+    });
+}
+
+//Function to merge and unique the results from both databases
+function mergeResults(results1, results2) {
+    const combinedResults = [...results1, ...results2];
+    combinedResults.sort((a, b) => a.apptcode - b.apptcode);
+    return combinedResults;
+}
+
+
+if (searchTerm) {
+    sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+    const searchParams = [`%${searchTerm}%`];
+    
+    Promise.all([
+        queryDatabase(db_slave1, sql, searchParams),
+        queryDatabase(db_slave2, sql, searchParams)
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+} else {
+    Promise.all([
+        queryDatabase(db_slave1, sql, []),
+        queryDatabase(db_slave2, sql, [])
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+}
+    
+   }
 });
 
-app.get('/updateAppointments/:apptcode', (req, res) => {
+app.get('/updateAppointments/:apptcode', async (req, res) => {
     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
     
     db.query(sql, [req.params.apptcode], (err, results) => {
@@ -166,7 +304,7 @@ app.get('/updateAppointments/:apptcode', (req, res) => {
     });
 });
 
-app.post('/submitUpdate', (req, res) => {
+app.post('/submitUpdate', async (req, res) => {
     // Extract updated values from req.body
     const { apptcode, status} = req.body;
 
@@ -184,7 +322,7 @@ app.post('/submitUpdate', (req, res) => {
     return res.redirect('/viewSearch');
 });
 
-app.post('/deleteAppointment', (req, res) => {
+app.post('/deleteAppointment', async (req, res) => {
     const { apptcode } = req.body;
     const sql = 'DELETE FROM appointments WHERE apptcode = ?';
     db.query(sql, [apptcode], (err, result) => {
@@ -201,39 +339,55 @@ app.post('/deleteAppointment', (req, res) => {
     res.redirect('/viewSearch');
 });
 
-app.post('/insertAppointment', (req, res) => {
-    let { apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind } = req.body;
+app.post('/insertAppointment', async (req, res) => {
+    let { apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind, apptcode } = req.body;
     type = type === '' ? null : type;
     virtualind = virtualind === '' ? null : virtualind;
-    queuedate = queuedate === ''? null:queuedate;
+    queuedate = queuedate === '' ? null : queuedate;
 
-    // Find the highest appointment code 
-    const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
-    db.query(findMaxApptCodeSql, (err, result) => {
-        if (err) {
-            console.error('Error finding max appointment code:', err);
-            return res.status(500).send('Error processing request');
-        }
-        const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1; // Increment or start at 1
-        
-        
-        // Insert new appointment with auto-generated apptcode
-        const insertSql = 'INSERT INTO appointments (apptcode,apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?,?,?, ?, ?, ?, ?, ?, ?)';
-        db.query(insertSql, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'], (err, result) => {
+    // Function to handle the actual insertion
+    const insertAppointment = (finalApptCode) => {
+        const insertSql = 'INSERT INTO appointments (apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        db.query(insertSql, [finalApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
             if (err) {
                 console.error('Error inserting new appointment:', err);
                 return res.status(500).send('Error processing request');
             }
-            console.log(maxApptCode);
-            console.log('New appointment added successfully');
-            // res.redirect('/addAppointments'); // Adjust redirect as necessary
+            console.log('New appointment added successfully with apptcode:', finalApptCode);
+            res.redirect('/addAppointments');
+        });
+    };
 
-            synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
-        });        
-    });
-
-    res.redirect('/addAppointments');
+    if (!apptcode) {
+        // User did not provide an apptcode, find the max apptcode and increment it
+        const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
+        db.query(findMaxApptCodeSql, (err, result) => {
+            if (err) {
+                console.error('Error finding max appointment code:', err);
+                return res.status(500).send('Error processing request');
+            }
+            const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1;
+            console.log('The current maxApptCode (next available code):', maxApptCode);
+            insertAppointment(maxApptCode);
+        });
+    } else {
+        // User provided an apptcode, check if it's unique
+        const checkApptCodeSql = 'SELECT COUNT(*) AS count FROM appointments WHERE apptcode = ?';
+        db.query(checkApptCodeSql, [apptcode], (err, result) => {
+            if (err) {
+                console.error('Error checking appointment code uniqueness:', err);
+                return res.status(500).send('Error processing request');
+            }
+            if (result[0].count > 0) {
+                // apptcode already exists, handle accordingly
+                return res.status(400).send('Appointment code already exists. Please choose a different code.');
+            } else {
+                insertAppointment(apptcode);
+            }
+        });
+    }
 });
+
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql = the actual query | query_params = list parameters for the query

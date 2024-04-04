@@ -7,7 +7,7 @@ const mysql = require('mysql2');
 const masterConfig = {
     host: 'localhost',
     user: 'root',
-    password: 'melgeoffrey', //change password to specific credentials
+    password: 'admin123', //change password to specific credentials
     database: 'mco2',
   };
                             //when updating in the vms, add a host:  
@@ -179,9 +179,6 @@ app.get('/reports', async (req, res) => {
     }
 });
 
-
-
-
 app.get('/viewSearch', (req, res) => {
     try{
     let sql = 'SELECT * FROM appointments LIMIT 500';
@@ -327,37 +324,52 @@ app.post('/deleteAppointment', (req, res) => {
 });
 
 app.post('/insertAppointment', (req, res) => {
-    let { apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind } = req.body;
+    let { apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind, apptcode } = req.body;
     type = type === '' ? null : type;
     virtualind = virtualind === '' ? null : virtualind;
-    queuedate = queuedate === ''? null:queuedate;
+    queuedate = queuedate === '' ? null : queuedate;
 
-    // Find the highest appointment code 
-    const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
-    db.query(findMaxApptCodeSql, (err, result) => {
-        if (err) {
-            console.error('Error finding max appointment code:', err);
-            return res.status(500).send('Error processing request');
-        }
-        const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1; // Increment or start at 1
-        
-        
-        // Insert new appointment with auto-generated apptcode
-        const insertSql = 'INSERT INTO appointments (apptcode,apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?,?,?, ?, ?, ?, ?, ?, ?)';
-        db.query(insertSql, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'], (err, result) => {
+    // Function to handle the actual insertion
+    const insertAppointment = (finalApptCode) => {
+        const insertSql = 'INSERT INTO appointments (apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        db.query(insertSql, [finalApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
             if (err) {
                 console.error('Error inserting new appointment:', err);
                 return res.status(500).send('Error processing request');
             }
-            console.log(maxApptCode);
-            console.log('New appointment added successfully');
-            // res.redirect('/addAppointments'); // Adjust redirect as necessary
+            console.log('New appointment added successfully with apptcode:', finalApptCode);
+            res.redirect('/addAppointments');
+        });
+    };
 
-            synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
-        });        
-    });
-
-    res.redirect('/addAppointments');
+    if (!apptcode) {
+        // User did not provide an apptcode, find the max apptcode and increment it
+        const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
+        db.query(findMaxApptCodeSql, (err, result) => {
+            if (err) {
+                console.error('Error finding max appointment code:', err);
+                return res.status(500).send('Error processing request');
+            }
+            const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1;
+            console.log('The current maxApptCode (next available code):', maxApptCode);
+            insertAppointment(maxApptCode);
+        });
+    } else {
+        // User provided an apptcode, check if it's unique
+        const checkApptCodeSql = 'SELECT COUNT(*) AS count FROM appointments WHERE apptcode = ?';
+        db.query(checkApptCodeSql, [apptcode], (err, result) => {
+            if (err) {
+                console.error('Error checking appointment code uniqueness:', err);
+                return res.status(500).send('Error processing request');
+            }
+            if (result[0].count > 0) {
+                // apptcode already exists, handle accordingly
+                return res.status(400).send('Appointment code already exists. Please choose a different code.');
+            } else {
+                insertAppointment(apptcode);
+            }
+        });
+    }
 });
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS

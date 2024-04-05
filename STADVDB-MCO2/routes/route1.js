@@ -64,19 +64,51 @@ function checkConnection(connection, config, label) {
 
 
 app.get('/', async (req, res) => {
+    db.destroy();
     checkConnections()
     res.render('index');
 });
 
 app.set('views', path.join(__dirname, '..','views'));
 // Serve the Add Appointments page
-app.get('/addAppointments', (req, res) => {
+app.get('/addAppointments', async (req, res) => {
     const sql = 'SELECT * FROM appointments LIMIT 500';
-    
-    db.query(sql, (err, results) => {
-        if (err) throw err;
+
+    // Query function that attempts to fetch appointments
+    async function queryAppointments(database) {
+        return new Promise((resolve, reject) => {
+            database.query(sql, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
+        });
+    }
+
+    try {
+        // First, try fetching appointments from the master database
+        const results = await queryAppointments(db);
         res.render('addAppointments', { appointments: results });
-    });
+    } catch (error) {
+        console.error('Error fetching appointments from master db, trying slave databases...', error);
+
+        // Attempt to fetch from the first slave database if master fails
+        try {
+            const resultsFromSlave1 = await queryAppointments(db_slave1);
+            res.render('addAppointments', { appointments: resultsFromSlave1 });
+        } catch (errorSlave1) {
+            console.error('Error fetching appointments from db_slave1, trying db_slave2...', errorSlave1);
+
+            // If the first slave also fails, attempt to fetch from the second slave database
+            try {
+                const resultsFromSlave2 = await queryAppointments(db_slave2);
+                res.render('addAppointments', { appointments: resultsFromSlave2 });
+            } catch (errorSlave2) {
+                // If all attempts fail, log the final error and return a failure response
+                console.error('Error fetching appointments from db_slave2. Unable to fetch appointments from any database.', errorSlave2);
+                res.status(500).send('Unable to fetch appointments.');
+            }
+        }
+    }
 });
 
 function formatDate(dateString) {
@@ -180,150 +212,163 @@ app.get('/reports', async (req, res) => {
 });
 
 app.get('/viewSearch', async (req, res) => {
-    try {
-        let sql = 'SELECT * FROM appointments LIMIT 500';
-        const searchTerm = req.query.searchTerm;
-        const searchColumn = req.query.searchColumn || 'apptcode';
-
-        // Adjust SQL if there's a search term
-        if (searchTerm) {
-            sql = `SELECT * FROM appointments WHERE ${db.escapeId(searchColumn)} LIKE ? LIMIT 500`;
-        }
-
-        // Function to execute the query on a single database
-        async function queryDatabase(db, sql, params) {
-            return new Promise((resolve, reject) => {
-                db.query(sql, params, (err, results) => {
-                    if (err) reject(err);
-                    else resolve(results);
-                });
-            });
-        }
-
-        // Execute query and handle results or errors
-        let appointments = [];
-        if (searchTerm) {
-            const searchParams = [`%${searchTerm}%`];
-            const results1 = await queryDatabase(db_slave1, sql, searchParams);
-            const results2 = await queryDatabase(db_slave2, sql, searchParams);
-            appointments = mergeResults(results1, results2).slice(0, 500);
-        } else {
-            const results1 = await queryDatabase(db_slave1, sql, []);
-            const results2 = await queryDatabase(db_slave2, sql, []);
-            appointments = mergeResults(results1, results2).slice(0, 500);
-        }
-
-        res.render('viewSearch', { appointments, formatDate: formatDate, searchColumn: searchColumn });
-    }
-   catch(error){ //Master node is down so since specs say only one db down at a time:
-    let sql = 'SELECT * FROM appointments LIMIT 500';
+    let sql = `SELECT * FROM appointments LIMIT 500`;
     const searchTerm = req.query.searchTerm;
     const searchColumn = req.query.searchColumn || 'apptcode';
+    const params = searchTerm ? [`%${searchTerm}%`] : [];
 
-//query a database
-function queryDatabase(db, sql, params) {
-    return new Promise((resolve, reject) => {
-        db.query(sql, params, (err, results) => {
-            if (err) return reject(err);
-            resolve(results);
+    if (searchTerm) {
+        sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+    }
+
+    // This function attempts a database query and handles errors or returns results
+    async function queryDatabase(db, sql, params) {
+        return new Promise((resolve, reject) => {
+            db.query(sql, params, (error, results) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(results);
+                }
+            });
         });
-    });
-}
+    }
 
-//Function to merge and unique the results from both databases
-function mergeResults(results1, results2) {
-    const combinedResults = [...results1, ...results2];
-    combinedResults.sort((a, b) => a.apptcode - b.apptcode);
-    return combinedResults;
-}
+    // Start by attempting to query the master database
+    try {
+        const appointments = await queryDatabase(db, sql, params);
 
+        // If the master database query is successful, render the page with these results
+        res.render('viewSearch', {
+            appointments,
+            formatDate: formatDate,
+            searchColumn,
+            searchTerm
+        });
+    } catch (error) {
+        console.log('Error querying master database, attempting slave databases:', error);
 
-if (searchTerm) {
-    sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
-    const searchParams = [`%${searchTerm}%`];
-    
-    Promise.all([
-        queryDatabase(db_slave1, sql, searchParams),
-        queryDatabase(db_slave2, sql, searchParams)
-    ]).then(([results1, results2]) => {
-        var combinedResults = mergeResults(results1, results2);
-        combinedResults = combinedResults.slice(0, 500);
-        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
-    }).catch(err => {
-        throw err;
-    });
-} else {
-    Promise.all([
-        queryDatabase(db_slave1, sql, []),
-        queryDatabase(db_slave2, sql, [])
-    ]).then(([results1, results2]) => {
-        var combinedResults = mergeResults(results1, results2);
-        combinedResults = combinedResults.slice(0, 500);
-        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
-    }).catch(err => {
-        throw err;
-    });
-}
-    
-   }
+        // If the master database query fails, attempt to query the slave databases
+        try {
+            let slaveResults = await queryDatabase(db_slave1, sql, params);
+
+            if (slaveResults.length === 0) {
+                console.log('No results from db_slave1, trying db_slave2...');
+                slaveResults = await queryDatabase(db_slave2, sql, params);
+            }
+
+            // Render the page with results from the slave database
+            res.render('viewSearch', {
+                appointments: slaveResults,
+                formatDate: formatDate,
+                searchColumn,
+                searchTerm
+            });
+        } catch (slaveError) {
+            // Handle errors encountered while querying the slave databases
+            console.error('Error querying slave databases:', slaveError);
+            res.status(500).send('Error retrieving search results from any database.');
+        }
+    }
 });
 
-app.get('/updateAppointments/:apptcode', async (req, res) => {
-    const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
-    
-    db.query(sql, [req.params.apptcode], (err, results) => {
-        if (err) throw err;
-        if (results.length > 0) {
-            const appointmentData = results[0];
-            const date = new Date(appointmentData.queuedate);
 
-            // Check if the date is valid
-            if (!isNaN(date.getTime())) {
-                appointmentData.queuedate = date.toISOString().slice(0,16);
-            } else {
-                // console.error('Invalid date for appointment', appointmentData.apptcode);
-                // Handle invalid date, perhaps by setting a default value or leaving it empty
-                appointmentData.queuedate = ''; // or set a default/fallback value
-            }
-            const sql2 = 'SELECT RegionName FROM clinics WHERE ClinicID = ?';
-            db.query(sql2, [appointmentData.clinicid], (err2, results2) => {
-                if (err2) throw err2;
-                if (results2.length > 0) {
-                    // Add the RegionName to the appointment data
-                    appointmentData.regionName = results2[0].RegionName;
-                } else {
-                    console.error('Clinic not found for ClinicID', appointmentData.clinicid);
-                    appointmentData.regionName = 'Unknown Region';
-                }
-                res.render('updateAppointments', { ...appointmentData });
+app.get('/updateAppointments/:apptcode', async (req, res) => {
+    const apptcode = req.params.apptcode;
+    const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
+    const clinicSql = 'SELECT RegionName FROM clinics WHERE ClinicID = ?';
+
+    // Helper function for querying database and fetching data
+    async function fetchData(query, params, dbConnection) {
+        return new Promise((resolve, reject) => {
+            dbConnection.query(query, params, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
             });
-        } else {
-            // Handle case where no appointment is found
-            res.send('Appointment not found');
+        });
+    }
+
+    // Main logic to fetch appointment and clinic details
+    async function getAppointmentDetails() {
+        try {
+            // Attempt to fetch appointment details from the primary database
+            const appointmentResults = await fetchData(sql, [apptcode], db);
+            if (appointmentResults.length === 0) {
+                throw new Error('Appointment not found');
+            }
+            const appointment = appointmentResults[0];
+
+            // Fetch clinic details for the region name
+            const clinicResults = await fetchData(clinicSql, [appointment.clinicid], db);
+            const regionName = clinicResults.length > 0 ? clinicResults[0].RegionName : 'Unknown Region';
+
+            // Pass fetched data to the view
+            return { ...appointment, regionName };
+        } catch (error) {
+            console.error(error);
+            // Attempt to fetch from slave databases if the primary fails
+            for (let slaveDb of [db_slave1, db_slave2]) {
+                try {
+                    const appointmentResults = await fetchData(sql, [apptcode], slaveDb);
+                    if (appointmentResults.length > 0) {
+                        const appointment = appointmentResults[0];
+                        const clinicResults = await fetchData(clinicSql, [appointment.clinicid], slaveDb);
+                        const regionName = clinicResults.length > 0 ? clinicResults[0].RegionName : 'Unknown Region';
+                        return { ...appointment, regionName };
+                    }
+                } catch (slaveError) {
+                    console.error(slaveError);
+                }
+            }
+            // If all attempts fail, return null to indicate failure
+            return null;
         }
-    });
+    }
+
+    // Execute the main logic and render the response
+    const appointmentDetails = await getAppointmentDetails();
+    if (appointmentDetails) {
+        res.render('updateAppointments', appointmentDetails);
+    } else {
+        res.status(404).send('Appointment not found.');
+    }
 });
 
 app.post('/submitUpdate', async (req, res) => {
-    const { apptcode, status } = req.body;
+    const { apptcode, status } = req.body; // Assuming status or other fields are being updated
     const sql = 'UPDATE appointments SET status = ? WHERE apptcode = ?';
 
-    // Attempt to update on slave databases due to master disconnection
     try {
+        // Try to update using the master database first
         await new Promise((resolve, reject) => {
-            db_slave1.query(sql, [status, apptcode], (err, result) => {
-                if (err) {
-                    db_slave2.query(sql, [status, apptcode], (err2, result2) => {
-                        if (err2) reject(err2);
-                        else resolve(result2);
-                    });
-                } else resolve(result);
+            db.query(sql, [status, apptcode], (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
             });
         });
-        res.redirect('/viewSearch');
+        console.log(`Appointment ${apptcode} updated successfully on master database.`);
+        res.redirect('/viewSearch'); // Or any appropriate response
     } catch (error) {
-        console.error('Update operation failed on slave nodes.', error);
-        res.status(500).send('Unable to update the appointment status. All nodes are unavailable.');
+        console.error('Attempt on master database failed:', error);
+        // Fallback to slave databases if master is down
+        try {
+            // Attempt the update on db_slave1, if it fails, catch the error and try db_slave2
+            await new Promise((resolve, reject) => {
+                db_slave1.query(sql, [status, apptcode], (err, result) => {
+                    if (err) {
+                        db_slave2.query(sql, [status, apptcode], (err2, result2) => {
+                            if (err2) reject(err2);
+                            else resolve(result2);
+                        });
+                    } else resolve(result);
+                });
+            });
+            console.log(`Appointment ${apptcode} updated successfully on a slave database.`);
+            res.redirect('/viewSearch'); // Or any appropriate response
+        } catch (slaveError) {
+            console.error('Update operation failed on both slave databases:', slaveError);
+            res.status(500).send('Unable to update the appointment on any database.');
+        }
     }
 });
 
@@ -331,37 +376,48 @@ app.post('/deleteAppointment', async (req, res) => {
     const { apptcode } = req.body;
     const sql = 'DELETE FROM appointments WHERE apptcode = ?';
 
-    // Since the master database is assumed to be disconnected, attempt to delete on slave databases
+    // First, attempt to delete using the master database
     try {
-        // First, attempt to delete from db_slave1
-        const result1 = await new Promise((resolve, reject) => {
-            db_slave1.query(sql, [apptcode], (err, result) => {
-                if (err) {
-                    // If there's an error, try db_slave2 next
-                    db_slave2.query(sql, [apptcode], (err2, result2) => {
-                        if (err2) reject(err2);
-                        else resolve(result2); // Resolve with the result from db_slave2
-                    });
-                } else {
-                    resolve(result); // Resolve with the result from db_slave1
-                }
+        await new Promise((resolve, reject) => {
+            db.query(sql, [apptcode], (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
             });
         });
-
-        // If the operation was successful on either slave, proceed as normal
-        if (result1.affectedRows > 0) {
-            console.log('Appointment deleted successfully from a slave database.');
-            res.redirect('/viewSearch');
-        } else {
-            // This block might be reached if the apptcode doesn't exist in either database
-            // Adjust this behavior based on your application's requirements
-            console.log('No appointment found with the provided code in slave databases.');
-            res.status(404).send('Appointment not found.');
-        }
+        console.log('Appointment deleted successfully on master database.');
+        res.redirect('/viewSearch');
     } catch (error) {
-        // Log the error and inform the user if the operation failed on both slave nodes
-        console.error('Delete operation failed on slave nodes.', error);
-        res.status(500).send('Unable to delete appointment. Please try again later.');
+        // Handle case where master database might be down or operation fails
+        console.error('Error deleting appointment on master database, attempting on slave databases:', error);
+
+        // Attempt to delete the appointment on db_slave1
+        try {
+            await new Promise((resolve, reject) => {
+                db_slave1.query(sql, [apptcode], (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+            console.log('Appointment deleted successfully on db_slave1.');
+            res.redirect('/viewSearch');
+        } catch (slave1Error) {
+            console.error('Delete operation failed on db_slave1, attempting on db_slave2...', slave1Error);
+
+            // If the operation fails on db_slave1, try db_slave2
+            try {
+                await new Promise((resolve, reject) => {
+                    db_slave2.query(sql, [apptcode], (err, result) => {
+                        if (err) reject(err);
+                        else resolve(result);
+                    });
+                });
+                console.log('Appointment deleted successfully on db_slave2.');
+                res.redirect('/viewSearch');
+            } catch (slave2Error) {
+                console.error('Delete operation failed on db_slave2:', slave2Error);
+                res.status(500).send('Unable to delete the appointment on any database.');
+            }
+        }
     }
 });
 
@@ -371,55 +427,55 @@ app.post('/insertAppointment', async (req, res) => {
     virtualind = virtualind === '' ? null : virtualind;
     queuedate = queuedate === '' ? null : queuedate;
 
+    // Initial attempt to parse apptcode or set it to undefined if not provided
     let { apptcode } = req.body;
-    apptcode = parseInt(apptcode, 10); // Attempt to parse apptcode as an integer
+    apptcode = apptcode ? parseInt(apptcode, 10) : undefined;
 
-    // Define the SQL for inserting the appointment
+    // Define the SQL query for inserting the appointment
     const insertSql = 'INSERT INTO appointments (apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
-    const query_params = [null, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind]; // Set apptcode to null initially
 
-    // Function to insert the appointment into a slave DB
-    const insertIntoSlave = async (apptCode) => {
-        query_params[0] = apptCode; // Update the apptcode in query params
-        try {
-            // Attempt to insert into db_slave1, fall back to db_slave2 if necessary
-            await new Promise((resolve, reject) => {
-                db_slave1.query(insertSql, query_params, (err, result) => {
-                    if (err) {
-                        db_slave2.query(insertSql, query_params, (err2, result2) => {
-                            if (err2) reject(err2);
-                            else resolve(result2);
-                        });
-                    } else resolve(result);
-                });
+    // A reusable function to attempt an insert into the database
+    const attemptInsert = async (database, apptCode) => {
+        return new Promise((resolve, reject) => {
+            database.query(insertSql, [apptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
+                if (err) reject(err);
+                else resolve(apptCode); // Resolve with the apptcode to confirm success
             });
-            res.redirect('/addAppointments');
-        } catch (error) {
-            console.error('Insert operation failed on slave nodes:', error);
-            res.status(500).send('Error processing request. Unable to insert new appointment.');
-        }
+        });
     };
 
-    // Generate or validate apptcode
-    if (isNaN(apptcode)) { // If apptcode is not a valid number
-        // Generate a new apptcode by finding the max existing apptcode and adding 1
-        const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
-        db_slave1.query(findMaxApptCodeSql, async (err, results) => {
-            if (err || !results.length || isNaN(results[0].maxApptCode)) {
-                db_slave2.query(findMaxApptCodeSql, async (err2, results2) => {
-                    if (err2 || !results2.length || isNaN(results2[0].maxApptCode)) {
-                        return res.status(500).send('Unable to generate a unique appointment code.');
-                    } else {
-                        await insertIntoSlave(results2[0].maxApptCode + 1);
-                    }
+    try {
+        // Try to insert using the master database first
+        if (apptcode === undefined) {
+            // Generate a new apptcode if not provided
+            const findMaxApptCodeSql = 'SELECT MAX(apptcode) + 1 AS newApptCode FROM appointments';
+            const result = await new Promise((resolve, reject) => {
+                db.query(findMaxApptCodeSql, (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results[0].newApptCode || 1); // Default to 1 if no existing records
                 });
-            } else {
-                await insertIntoSlave(results[0].maxApptCode + 1);
-            }
-        });
-    } else {
-        // If a valid apptcode is provided, attempt to insert directly
-        insertIntoSlave(apptcode);
+            });
+            apptcode = result;
+        }
+
+        await attemptInsert(db, apptcode);
+        console.log('New appointment added successfully with apptcode:', apptcode);
+        res.redirect('/addAppointments');
+    } catch (error) {
+        console.error('Attempt on master database failed:', error);
+        // Fallback to slave databases if master is down or apptcode generation failed
+        try {
+            const newApptCode = apptcode === undefined ? 1 : apptcode; // Use 1 as a fallback apptcode or retry with the same apptcode
+            await attemptInsert(db_slave1, newApptCode).catch(async () => {
+                // If db_slave1 fails, try db_slave2
+                await attemptInsert(db_slave2, newApptCode);
+            });
+            console.log('New appointment added successfully on slave database with apptcode:', newApptCode);
+            res.redirect('/addAppointments');
+        } catch (slaveError) {
+            console.error('Insert operation failed on slave databases:', slaveError);
+            res.status(500).send('Unable to insert new appointment on any database.');
+        }
     }
 });
 

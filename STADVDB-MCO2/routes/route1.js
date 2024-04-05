@@ -8,7 +8,7 @@ const mysql = require('mysql');
 const masterConfig = {
     host: 'localhost',
     user: 'root',
-    password: 'melgeoffrey', //change password to specific credentials
+    password: 'admin123', //change password to specific credentials
     database: 'mco2',
   };
                             //when updating in the vms, add a host:  
@@ -305,38 +305,63 @@ app.get('/updateAppointments/:apptcode', async (req, res) => {
 });
 
 app.post('/submitUpdate', async (req, res) => {
-    // Extract updated values from req.body
-    const { apptcode, status} = req.body;
-
-    // SQL to update appointment in database
+    // Extract the updated values from the request body
+    const { apptcode, status } = req.body;
+    // Define the SQL query for updating the appointment's status
     const sql = 'UPDATE appointments SET status = ? WHERE apptcode = ?';
 
-    db.query(sql, [status, apptcode], (err, result) => {
-        if (err) throw err;
-        // Redirect back to the appointments list, or show a success message
-        // res.redirect('/viewSearch');
-    })
-    // Function to Update/Delete the corresponding row in Slave 1 or 2 - for synchronizing
-    synchronizeUpdateDeleteDBs(sql, [status, apptcode])
+    try {
+        // Simulate the disconnection of the master database connection
+        db.destroy();
 
-    return res.redirect('/viewSearch');
+        // Attempt to perform the update operation (this will fail due to the master connection being destroyed)
+        await new Promise((resolve, reject) => {
+            db.query(sql, [status, apptcode], (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            });
+        });
+
+        // If the operation succeeds unexpectedly (which is unlikely), redirect to the search view
+        res.redirect('/viewSearch');
+    } catch (error) {
+        // Handle any errors that occur due to the disconnection of the master database
+        console.error('Update operation failed. Master node is disconnected.', error);
+
+        // Respond to the client with an error message, indicating that the update operation failed
+        res.status(500).send('Unable to update the appointment status. Master database is unavailable.');
+    }
 });
 
 app.post('/deleteAppointment', async (req, res) => {
     const { apptcode } = req.body;
     const sql = 'DELETE FROM appointments WHERE apptcode = ?';
-    db.query(sql, [apptcode], (err, result) => {
-        if (err) {
-            console.error('Error deleting appointment:', err);
-            // Consider sending a more descriptive error to the client
-            return res.status(500).send('Error deleting appointment. Please try again.');
-        }
-        console.log('Appointment deleted successfully');
-    });
-    // Function to Update/Delete the corresponding row in Slave 1 or 2
-    synchronizeUpdateDeleteDBs(sql, [apptcode]);
 
-    res.redirect('/viewSearch');
+    try {
+        // Simulate the disconnection of the master database connection
+        db.destroy();
+
+        // Attempt to delete the appointment (this should fail because the master connection is destroyed)
+        await new Promise((resolve, reject) => {
+            db.query(sql, [apptcode], (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            });
+        });
+
+        // This line is unlikely to be executed since the database connection is destroyed,
+        // and an error should be thrown before this point
+        console.log('Appointment deleted successfully');
+        res.redirect('/viewSearch');
+    } catch (error) {
+        // Handle errors that occur due to the master database disconnection
+        console.error('Delete operation failed. Master node is disconnected.', error);
+
+        // Respond with an appropriate error message
+        res.status(500).send('Unable to delete appointment. Please try again later.');
+
+        // Here you might also include logic to retry the operation or to log the failed deletion attempt for later recovery
+    }
 });
 
 app.post('/insertAppointment', async (req, res) => {
@@ -346,48 +371,69 @@ app.post('/insertAppointment', async (req, res) => {
     queuedate = queuedate === '' ? null : queuedate;
 
     // Function to handle the actual insertion
-    const insertAppointment = (finalApptCode) => {
+    const insertAppointment = async (finalApptCode) => {
         const insertSql = 'INSERT INTO appointments (apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
-        db.query(insertSql, [finalApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
-            if (err) {
-                console.error('Error inserting new appointment:', err);
-                return res.status(500).send('Error processing request');
-            }
-            console.log('New appointment added successfully with apptcode:', finalApptCode);
+        
+        try {
+            // Simulate disconnection of the master node
+            db.destroy();
+
+            // Attempt to insert the new appointment (this should fail because the master connection is destroyed)
+            await new Promise((resolve, reject) => {
+                db.query(insertSql, [finalApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+
+            // Redirect or respond upon unexpected success (unlikely to reach this point)
             res.redirect('/addAppointments');
-        });
+        } catch (error) {
+            // Handle the error due to the master node's disconnection
+            console.error('Error inserting new appointment due to master node disconnection:', error);
+            res.status(500).send('Error processing request. Unable to insert new appointment.');
+        }
     };
 
     if (!apptcode) {
         // User did not provide an apptcode, find the max apptcode and increment it
-        const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
-        db.query(findMaxApptCodeSql, (err, result) => {
-            if (err) {
-                console.error('Error finding max appointment code:', err);
-                return res.status(500).send('Error processing request');
-            }
-            const maxApptCode = result[0].maxApptCode ? parseInt(result[0].maxApptCode) + 1 : 1;
+        try {
+            const findMaxApptCodeSql = 'SELECT MAX(apptcode) AS maxApptCode FROM appointments';
+            const [result] = await new Promise((resolve, reject) => {
+                db.query(findMaxApptCodeSql, (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                });
+            });
+            const maxApptCode = result.maxApptCode ? parseInt(result.maxApptCode) + 1 : 1;
             console.log('The current maxApptCode (next available code):', maxApptCode);
-            insertAppointment(maxApptCode);
-        });
+            await insertAppointment(maxApptCode);
+        } catch (error) {
+            console.error('Error finding max appointment code:', error);
+            return res.status(500).send('Error processing request');
+        }
     } else {
         // User provided an apptcode, check if it's unique
-        const checkApptCodeSql = 'SELECT COUNT(*) AS count FROM appointments WHERE apptcode = ?';
-        db.query(checkApptCodeSql, [apptcode], (err, result) => {
-            if (err) {
-                console.error('Error checking appointment code uniqueness:', err);
-                return res.status(500).send('Error processing request');
-            }
-            if (result[0].count > 0) {
-                // apptcode already exists, handle accordingly
+        try {
+            const checkApptCodeSql = 'SELECT COUNT(*) AS count FROM appointments WHERE apptcode = ?';
+            const [result] = await new Promise((resolve, reject) => {
+                db.query(checkApptCodeSql, [apptcode], (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                });
+            });
+            if (result.count > 0) {
+                // Apptcode already exists, handle accordingly
                 return res.status(400).send('Appointment code already exists. Please choose a different code.');
             } else {
-                insertAppointment(apptcode);
+                await insertAppointment(apptcode);
             }
-        });
+        } catch (error) {
+            console.error('Error checking appointment code uniqueness:', error);
+            return res.status(500).send('Error processing request');
+        }
     }
 });
-
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql = the actual query | query_params = list parameters for the query

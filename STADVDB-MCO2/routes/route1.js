@@ -8,7 +8,7 @@ const mysql = require('mysql');
 const masterConfig = {
     host: 'localhost',
     user: 'root',
-    password: 'admin123', //change password to specific credentials
+    password: 'melgeoffrey', //change password to specific credentials
     database: 'mco2',
   };
                             //when updating in the vms, add a host:  
@@ -34,7 +34,7 @@ function createConnection(config,label) {
     connection.on('error', (err) => {
       console.error(`${label} - MySQL error:`, err);
       if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        createConnection(config); // Reconnect if the connection is lost
+        createConnection(config,label); // Reconnect if the connection is lost
       } else {
         throw err;
       }
@@ -64,8 +64,8 @@ function checkConnection(connection, config, label) {
 
 
 app.get('/', async (req, res) => {
-    db.destroy();
-    checkConnections()
+    //db.destroy();     //Use when simulating database crashes
+    checkConnections()   //if want the reconnecting feature just comment out the line in checkConnection()
     res.render('index');
 });
 
@@ -212,65 +212,94 @@ app.get('/reports', async (req, res) => {
 });
 
 app.get('/viewSearch', async (req, res) => {
-    let sql = `SELECT * FROM appointments LIMIT 500`;
+    try {
+        let sql = 'SELECT * FROM appointments LIMIT 500';
+        const searchTerm = req.query.searchTerm;
+        const searchColumn = req.query.searchColumn || 'apptcode';
+
+        // Adjust SQL if there's a search term
+        if (searchTerm) {
+            sql = `SELECT * FROM appointments WHERE ${db.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+        }
+
+        // Function to execute the query on a single database
+        async function queryDatabase(db, sql, params) {
+            return new Promise((resolve, reject) => {
+                db.query(sql, params, (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                });
+            });
+        }
+
+        // Execute query and handle results or errors
+        let appointments = [];
+        if (searchTerm) {
+            const searchParams = [`%${searchTerm}%`];
+            const results1 = await queryDatabase(db_slave1, sql, searchParams);
+            const results2 = await queryDatabase(db_slave2, sql, searchParams);
+            appointments = mergeResults(results1, results2).slice(0, 500);
+        } else {
+            const results1 = await queryDatabase(db_slave1, sql, []);
+            const results2 = await queryDatabase(db_slave2, sql, []);
+            appointments = mergeResults(results1, results2).slice(0, 500);
+        }
+
+        res.render('viewSearch', { appointments, formatDate: formatDate, searchColumn: searchColumn });
+    }
+   catch(error){ //Master node is down so since specs say only one db down at a time:
+    let sql = 'SELECT * FROM appointments LIMIT 500';
     const searchTerm = req.query.searchTerm;
     const searchColumn = req.query.searchColumn || 'apptcode';
-    const params = searchTerm ? [`%${searchTerm}%`] : [];
 
-    if (searchTerm) {
-        sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
-    }
-
-    // This function attempts a database query and handles errors or returns results
-    async function queryDatabase(db, sql, params) {
-        return new Promise((resolve, reject) => {
-            db.query(sql, params, (error, results) => {
-                if (error) {
-                    reject(error);
-                } else {
-                    resolve(results);
-                }
-            });
+//query a database
+function queryDatabase(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
         });
-    }
+    });
+}
 
-    // Start by attempting to query the master database
-    try {
-        const appointments = await queryDatabase(db, sql, params);
+//Function to merge and unique the results from both databases
+function mergeResults(results1, results2) {
+    const combinedResults = [...results1, ...results2];
+    combinedResults.sort((a, b) => a.apptcode - b.apptcode);
+    return combinedResults;
+}
 
-        // If the master database query is successful, render the page with these results
-        res.render('viewSearch', {
-            appointments,
-            formatDate: formatDate,
-            searchColumn,
-            searchTerm
-        });
-    } catch (error) {
-        console.log('Error querying master database, attempting slave databases:', error);
 
-        // If the master database query fails, attempt to query the slave databases
-        try {
-            let slaveResults = await queryDatabase(db_slave1, sql, params);
-
-            if (slaveResults.length === 0) {
-                console.log('No results from db_slave1, trying db_slave2...');
-                slaveResults = await queryDatabase(db_slave2, sql, params);
-            }
-
-            // Render the page with results from the slave database
-            res.render('viewSearch', {
-                appointments: slaveResults,
-                formatDate: formatDate,
-                searchColumn,
-                searchTerm
-            });
-        } catch (slaveError) {
-            // Handle errors encountered while querying the slave databases
-            console.error('Error querying slave databases:', slaveError);
-            res.status(500).send('Error retrieving search results from any database.');
-        }
-    }
+if (searchTerm) {
+    sql = `SELECT * FROM appointments WHERE ${mysql.escapeId(searchColumn)} LIKE ? LIMIT 500`;
+    const searchParams = [`%${searchTerm}%`];
+    
+    Promise.all([
+        queryDatabase(db_slave1, sql, searchParams),
+        queryDatabase(db_slave2, sql, searchParams)
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+} else {
+    Promise.all([
+        queryDatabase(db_slave1, sql, []),
+        queryDatabase(db_slave2, sql, [])
+    ]).then(([results1, results2]) => {
+        var combinedResults = mergeResults(results1, results2);
+        combinedResults = combinedResults.slice(0, 500);
+        res.render('viewSearch', { appointments: combinedResults, formatDate: formatDate, searchColumn: searchColumn });
+    }).catch(err => {
+        throw err;
+    });
+}
+    
+   }
 });
+
 
 
 app.get('/updateAppointments/:apptcode', async (req, res) => {
@@ -360,8 +389,17 @@ app.post('/submitUpdate', async (req, res) => {
                             if (err2) reject(err2);
                             else resolve(result2);
                         });
-                    } else resolve(result);
-                });
+                    } else {
+                        if (result.affectedRows === 0) {
+                            db_slave2.query(sql, [status, apptcode], (err2, result2) => {
+                                if (err2) reject(err2);
+                                else resolve(result2);
+                            });
+                        } else {
+                            resolve(result);
+                        }
+                    }
+                });  
             });
             console.log(`Appointment ${apptcode} updated successfully on a slave database.`);
             res.redirect('/viewSearch'); // Or any appropriate response

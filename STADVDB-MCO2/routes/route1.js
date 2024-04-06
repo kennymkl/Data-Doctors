@@ -25,7 +25,7 @@ function createConnection(config,label) {
     connection.connect((err) => {
       if (err) {
         console.error(`${label} - Error connecting to the MySQL server`);
-        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds
+        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds (not applicable satin ata)
       } else {
         console.log(`${label} - Connected to the MySQL server.`);
       }
@@ -48,8 +48,8 @@ function checkConnection(connection, config, label) {
       if (err) {
         console.error(`${label} - Lost connection...`);
         // The connection is destroyed, attempt to reconnect
-        //createConnection(config, label); 
-        //^--Commented this out muna para macontrol
+        //connection.createConnection(config, label); 
+        //^--Commented this out kasi wala naman effect dun sa original na vars
       } else {
         console.log(`${label} - Connection is healthy.`);
       }
@@ -62,10 +62,16 @@ function checkConnection(connection, config, label) {
     checkConnection(db_slave2,slave1Config,'slave2')
   }
 
+  function reconnectAll(){
+    db = createConnection(masterConfig,'master');
+    db_slave1 = createConnection(slave1Config,'slave1');
+    db_slave2 = createConnection(slave2Config,'slave2');
+  }
 
 app.get('/', async (req, res) => {
     //db.destroy();     //Use when simulating database crashes
-    checkConnections()   //if want the reconnecting feature just comment out the line in checkConnection()
+    checkConnections()   //if you want to see connection states of the vars
+    reconnectAll()    // reconnect every connection and still uses the same vars that were established
     res.render('index');
 });
 

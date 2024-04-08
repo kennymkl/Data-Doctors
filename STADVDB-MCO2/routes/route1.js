@@ -381,7 +381,8 @@ app.post('/submitUpdate', async (req, res) => {
                 else resolve(result);
             });
         });
-        await synchronizeUpdateDeleteDBs(sql, [status, apptcode])
+
+        synchronizeUpdateDeleteDBs(sql, [status, apptcode])
 
         console.log(`Appointment ${apptcode} updated successfully on master database.`);
         res.redirect('/viewSearch'); // Or any appropriate response
@@ -430,6 +431,7 @@ app.post('/deleteAppointment', async (req, res) => {
                 else resolve(result);
             });
         });
+        synchronizeUpdateDeleteDBs(sql, [apptcode])
         console.log('Appointment deleted successfully on master database.');
         res.redirect('/viewSearch');
     } catch (error) {

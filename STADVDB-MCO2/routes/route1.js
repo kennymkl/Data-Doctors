@@ -696,7 +696,7 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
 
     new Promise((resolve, reject) => { 
         db_slave1.query(sql_select1, query_params, (err, result) => {
-            if (err) throw err
+            if (err) throw reject(err)
 
             clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
 

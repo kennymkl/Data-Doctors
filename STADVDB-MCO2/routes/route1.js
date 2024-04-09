@@ -8,7 +8,9 @@ const mysql = require('mysql');
 const masterConfig = {
     host: 'localhost',
     user: 'root',
-    password: 'melgeoffrey', //change password to specific credentials
+
+    password: 'admin123', //change password to specific credentials
+
     database: 'mco2',
   };
                             //when updating in the vms, add a host:  
@@ -69,9 +71,9 @@ function checkConnection(connection, config, label) {
   }
 
 app.get('/', async (req, res) => {
-    //db.destroy();     //Use when simulating database crashes
+    db.destroy();     //Use when simulating database crashes
     checkConnections()   //if you want to see connection states of the vars
-    reconnectAll()    // reconnect every connection and still uses the same vars that were established
+    //reconnectAll()    // reconnect every connection and still uses the same vars that were established
     res.render('index');
 });
 
@@ -307,7 +309,6 @@ if (searchTerm) {
 });
 
 
-
 app.get('/updateAppointments/:apptcode', async (req, res) => {
     const apptcode = req.params.apptcode;
     const sql = 'SELECT * FROM appointments WHERE apptcode = ?';
@@ -337,7 +338,6 @@ app.get('/updateAppointments/:apptcode', async (req, res) => {
             const clinicResults = await fetchData(clinicSql, [appointment.clinicid], db);
             const regionName = clinicResults.length > 0 ? clinicResults[0].RegionName : 'Unknown Region';
 
-            // Pass fetched data to the view
             return { ...appointment, regionName };
         } catch (error) {
             console.error(error);
@@ -368,53 +368,184 @@ app.get('/updateAppointments/:apptcode', async (req, res) => {
         res.status(404).send('Appointment not found.');
     }
 });
-
-app.post('/submitUpdate', async (req, res) => {
-    const { apptcode, status } = req.body; // Assuming status or other fields are being updated
-    const sql = 'UPDATE appointments SET status = ? WHERE apptcode = ?';
-
-    try {
-        // Try to update using the master database first
-        await new Promise((resolve, reject) => {
-            db.query(sql, [status, apptcode], (err, result) => {
-                if (err) reject(err);
-                else resolve(result);
-            });
+async function executeQuery(dbConnection, sql, params) {
+    return new Promise((resolve, reject) => {
+        dbConnection.query(sql, params, (error, results) => {
+            if (error) return reject(error);
+            resolve(results);
         });
-        console.log(`Appointment ${apptcode} updated successfully on master database.`);
-        res.redirect('/viewSearch'); // Or any appropriate response
+    });
+}
+
+async function executeUpdateAndLog(dbConnection, dbName, sqlUpdate, params, apptcode, oldValue, newValue) {
+    try {
+        await executeQuery(dbConnection, sqlUpdate, params);
+        console.log(`Update successful on ${dbName}.`);
+
+        if (dbName !== 'master') {
+            await logOperation(dbConnection, apptcode, oldValue, newValue);
+            console.log(`Operation logged on ${dbName} for apptcode ${apptcode}.`);
+        }
+
+        return { success: true, message: `Update successful on ${dbName}.` };
     } catch (error) {
-        console.error('Attempt on master database failed:', error);
-        // Fallback to slave databases if master is down
+        console.error(`Operation on ${dbName} failed: ${error}`);
+        return { success: false, message: `Update failed on ${dbName}: ${error.message}` };
+    }
+}
+
+async function synchronizeAllSlavesToMaster() {
+    const slaves = [{ db: db_slave1, name: 'slave1' }, { db: db_slave2, name: 'slave2' }];
+    for (const { db, name } of slaves) {
         try {
-            // Attempt the update on db_slave1, if it fails, catch the error and try db_slave2
-            await new Promise((resolve, reject) => {
-                db_slave1.query(sql, [status, apptcode], (err, result) => {
-                    if (err) {
-                        db_slave2.query(sql, [status, apptcode], (err2, result2) => {
-                            if (err2) reject(err2);
-                            else resolve(result2);
-                        });
-                    } else {
-                        if (result.affectedRows === 0) {
-                            db_slave2.query(sql, [status, apptcode], (err2, result2) => {
-                                if (err2) reject(err2);
-                                else resolve(result2);
-                            });
-                        } else {
-                            resolve(result);
-                        }
-                    }
-                });  
-            });
-            console.log(`Appointment ${apptcode} updated successfully on a slave database.`);
-            res.redirect('/viewSearch'); // Or any appropriate response
-        } catch (slaveError) {
-            console.error('Update operation failed on both slave databases:', slaveError);
-            res.status(500).send('Unable to update the appointment on any database.');
+            console.log(`Starting synchronization from ${name} to master...`);
+            await synchronizeLogsFromSlave(db, name);
+        } catch (error) {
+            console.error(`Failed to synchronize ${name}: ${error}`);
         }
     }
+}
+
+app.post('/submitUpdate', async (req, res) => {
+    const { apptcode, status: newValue } = req.body; // `newValue` is the new status to be set
+    const sqlUpdate = 'UPDATE appointments SET status = ? WHERE apptcode = ?';
+    const params = [newValue, apptcode];
+
+    // First, fetch the current (old) status
+    let oldValue;
+    try {
+        const fetchResult = await executeQuery(db_slave1, 'SELECT status FROM appointments WHERE apptcode = ?', [apptcode]);
+        if (fetchResult.length > 0) oldValue = fetchResult[0].status;
+        else throw new Error('Appointment not found.');
+
+        // Attempt the update and log operation on slave1
+        let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
+
+        if (result.success) {
+            res.redirect('/viewSearch');
+        } else {
+            res.status(500).send('Unable to update the appointment on any database.');
+        }
+    } catch (error) {
+        console.error('Error fetching old status or updating:', error);
+        res.status(500).send(error.message);
+    }
 });
+
+async function fetchLogs(slaveDb) {
+    const sqlFetchLogs = 'SELECT * FROM log WHERE state = "pending"';
+    try {
+        const logs = await new Promise((resolve, reject) => {
+            slaveDb.query(sqlFetchLogs, (err, results) => {
+                if (err) {
+                    console.error(`Error fetching logs from ${slaveDb.config.host}: ${err}`);
+                    resolve([]); // Resolve with an empty array in case of an error
+                } else {
+                    console.log(`Fetched ${results.length} log entries from ${slaveDb.config.host}.`);
+                    resolve(results);
+                }
+            });
+        });
+        return logs;
+    } catch (error) {
+        console.error(`Exception fetching logs from slave: ${error}`);
+        return []; // Return an empty array to safely allow iteration later
+    }
+}
+
+async function logOperation(dbConnection, apptcode, oldValue, newValue) {
+    const logInsertSQL = `
+        INSERT INTO log (apptcode, old_value, new_value, state)
+        VALUES (?, ?, ?, 'pending')
+    `;
+    try {
+        console.log(`Attempting to log operation for apptcode: ${apptcode}, from ${oldValue} to ${newValue}`);
+
+        await dbConnection.query(logInsertSQL, [apptcode, oldValue, newValue], (err, result) => {
+            if (err) {
+                console.error(`Failed to log operation: ${err.message}`);
+            } else {
+                console.log(`Successfully logged operation for apptcode: ${apptcode}, with result: ${JSON.stringify(result)}`);
+            }
+        });
+    } catch (error) {
+        console.error(`Exception in logOperation: ${error.message}`);
+    }
+}
+
+async function synchronizeLogsFromSlave(slaveDb, slaveName) {
+    console.log(`About to synchronize logs from ${slaveDb.config.host}`);
+    const logs = await fetchLogs(slaveDb);
+    console.log(`Logs fetched: `, JSON.stringify(logs));
+
+    // Validate logs before proceeding
+    const validLogs = logs.filter(log => log.apptcode && log.old_value !== undefined && log.new_value !== undefined);
+
+    if (!Array.isArray(validLogs) || validLogs.length === 0) {
+        console.log(`No valid logs to synchronize from ${slaveDb.config.host}.`);
+        return;
+    }
+
+    for (const logEntry of validLogs) {
+        console.log(`Synchronizing log entry ${logEntry.id} from ${slaveName}...`);
+        console.log(`Log entry details: apptcode=${logEntry.apptcode}, old_value=${logEntry.old_value}, new_value=${logEntry.new_value}`);
+
+        try {
+            // Construct SQL command based on log entry details
+            const sql = `UPDATE appointments SET status = ? WHERE apptcode = ?`;
+            const params = [logEntry.new_value, logEntry.apptcode];
+
+            await executeQuery(db, sql, params);
+            console.log(`Successfully synchronized log entry ${logEntry.id} from ${slaveName} to master.`);
+            
+            // Clear the log entry on the slave after successful synchronization
+            await clearLogEntry(slaveDb, logEntry.id);
+        } catch (error) {
+            console.error(`Error synchronizing log entry ${logEntry.id} from ${slaveName}: ${error}`);
+        }
+    }
+}
+
+async function executeUpdateAndLog(dbConnection, dbName, sqlUpdate, params, apptcode, oldValue, newValue) {
+    try {
+        await executeQuery(dbConnection, sqlUpdate, params);
+        console.log(`Update successful on ${dbName}.`);
+
+        if (dbName !== 'master') {
+            await logOperation(dbConnection, apptcode, oldValue, newValue);
+            console.log(`Operation logged on ${dbName} for apptcode ${apptcode}.`);
+        }
+
+        return { success: true, message: `Update successful on ${dbName}.` };
+    } catch (error) {
+        console.error(`Operation on ${dbName} failed: ${error}`);
+        return { success: false, message: `Update failed on ${dbName}: ${error.message}` };
+    }
+}
+
+// Function to clear a log entry after successful synchronization
+async function clearLogEntry(slaveDb, logId) {
+    const sqlClearLog = 'DELETE FROM log WHERE id = ?';
+    try {
+        const result = await new Promise((resolve, reject) => {
+            slaveDb.query(sqlClearLog, [logId], (err, result) => {
+                if (err) {
+                    console.error(`Error clearing log entry with ID ${logId} from ${slaveDb.config.host}: ${err}`);
+                    reject(err);
+                } else {
+                    console.log(`Successfully cleared log entry with ID ${logId} from ${slaveDb.config.host}.`);
+                    resolve(result);
+                }
+            });
+        });
+
+        console.log(`Clear log entry result:`, result);
+    } catch (error) {
+        console.error(`Error clearing log entry with ID ${logId} from ${slaveDb.config.database}:`, error);
+        // Depending on your error handling strategy, you might want to rethrow the error or handle it differently
+        throw error;
+    }
+}
 
 app.post('/deleteAppointment', async (req, res) => {
     const { apptcode } = req.body;
@@ -428,6 +559,7 @@ app.post('/deleteAppointment', async (req, res) => {
                 else resolve(result);
             });
         });
+        synchronizeUpdateDeleteDBs(sql, [apptcode])
         console.log('Appointment deleted successfully on master database.');
         res.redirect('/viewSearch');
     } catch (error) {
@@ -471,14 +603,11 @@ app.post('/insertAppointment', async (req, res) => {
     virtualind = virtualind === '' ? null : virtualind;
     queuedate = queuedate === '' ? null : queuedate;
 
-    // Initial attempt to parse apptcode or set it to undefined if not provided
     let { apptcode } = req.body;
     apptcode = apptcode ? parseInt(apptcode, 10) : undefined;
 
-    // Define the SQL query for inserting the appointment
     const insertSql = 'INSERT INTO appointments (apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
 
-    // A reusable function to attempt an insert into the database
     const attemptInsert = async (database, apptCode) => {
         return new Promise((resolve, reject) => {
             database.query(insertSql, [apptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind], (err, result) => {
@@ -496,13 +625,14 @@ app.post('/insertAppointment', async (req, res) => {
             const result = await new Promise((resolve, reject) => {
                 db.query(findMaxApptCodeSql, (err, results) => {
                     if (err) reject(err);
-                    else resolve(results[0].newApptCode || 1); // Default to 1 if no existing records
+                    else resolve(results[0].newApptCode || 1);
                 });
             });
             apptcode = result;
         }
-
         await attemptInsert(db, apptcode);
+
+        synchronizeAddDBs(insertSql, clinicid, [apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind])
         console.log('New appointment added successfully with apptcode:', apptcode);
         res.redirect('/addAppointments');
     } catch (error) {
@@ -526,21 +656,29 @@ app.post('/insertAppointment', async (req, res) => {
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql = the actual query | query_params = list parameters for the query
 // example use: synchronizeDBs(sql, [status, last_updated])
-function synchronizeUpdateDeleteDBs(sql, query_params){
+async function synchronizeUpdateDeleteDBs(sql, query_params){
     // Slave 1
-    db_slave1.query(sql, query_params, (err, result) => {
-        if (err) throw err;
+    await new Promise((resolve, reject) => { 
+        db_slave1.query(sql, query_params, (err, result) => {
+            if (err) reject(err);
+            else resolve();
+        });
+        console.log('Change reflected on Slave 1');
     });
     // Slave 2
-    db_slave2.query(sql, query_params, (err, result) => {
-        if (err) throw err;
+    await new Promise((resolve, reject) => { 
+        db_slave2.query(sql, query_params, (err, result) => {
+            if (err) reject(err);
+            else resolve();
+        });
+        console.log('Change reflected on Slave 2');
     });
 }
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql_insert = the actual insert query | clinicid = for checking if it exists in slave 1 or 2 | query_params = list parameters for the query 
 // example use: synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
-function synchronizeAddDBs(sql_insert, clinicid, query_params){
+async function synchronizeAddDBs(sql_insert, clinicid, query_params){
 
     let clinic_list1, clinic_list2;
 
@@ -555,19 +693,21 @@ function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'MIMAROPA (IV-B)', 
                                             'Bicol Region (V)')`
 
-    db_slave1.query(sql_select1, query_params, (err, result) => {
-        if (err) throw err
+    await new Promise((resolve, reject) => { 
+        db_slave1.query(sql_select1, query_params, (err, result) => {
+            if (err) throw err
 
-        clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+            clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
 
-        console.log('Checking Slave 1')
-        if (clinic_list1.includes(clinicid)) {
-            db_slave1.query(sql_insert, query_params, (err, result) => {
-                if (err) throw err
+            console.log('Checking Slave 1')
+            if (clinic_list1.includes(clinicid)) {
+                db_slave1.query(sql_insert, query_params, (err, result) => {
+                    if (err) throw err
 
-                console.log('INSERT success -> Slave 1')
-            })
-        }
+                    console.log('INSERT success -> Slave 1')
+                })
+            }
+        });
     });
 
     const sql_select2 = `SELECT clinicid
@@ -582,22 +722,40 @@ function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'Caraga (XIII)',
                                             'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
                                             );`
+             
+    await new Promise((resolve, reject) => { 
+        db_slave2.query(sql_select2, query_params, (err, result) => {
+            if (err) reject(err)
 
-    db_slave2.query(sql_select2, query_params, (err, result) => {
-        if (err) throw err
+            clinic_list2 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+            console.log('Checking Slave 2')
 
-        clinic_list2 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
-        
-        console.log('Checking Slave 2')
-        if (clinic_list2.includes(clinicid)) {
-            db_slave2.query(sql_insert, query_params, (err, result) => {
-                if (err) throw err
+            if (clinic_list2.includes(clinicid)) {
+                db_slave2.query(sql_insert, query_params, (err, result) => {
+                    if (err) reject(err)
+                    else resolve()
 
-                console.log('INSERT success -> Slave 2')
-            })
-        }
+                    console.log('INSERT success -> Slave 2')
+                })
+            }
+        });
     });
 
 }
+
+app.get('/reconnectDatabases', async (req, res) => {
+    try {
+        // Reconnect all databases
+        reconnectAll();
+
+        // Synchronize changes from each slave to the master
+        await synchronizeAllSlavesToMaster();
+
+        res.send('All databases reconnected and changes synchronized successfully.');
+    } catch (error) {
+        console.error('Failed to reconnect databases or synchronize changes:', error);
+        res.status(500).send('Failed to reconnect databases or synchronize changes.');
+    }
+});
 
 module.exports = app;

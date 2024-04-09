@@ -8,7 +8,9 @@ const mysql = require('mysql');
 const masterConfig = {
     host: 'localhost',
     user: 'root',
+
     password: 'admin123', //change password to specific credentials
+
     database: 'mco2',
   };
                             //when updating in the vms, add a host:  
@@ -555,7 +557,11 @@ async function clearLogEntry(slaveDb, logId) {
                 else resolve(result);
             });
         });
-        console.log(`Cleared log entry with ID ${logId} from ${slaveDb.config.database}.`);
+
+        synchronizeUpdateDeleteDBs(sql, [status, apptcode])
+
+        console.log(`Appointment ${apptcode} updated successfully on master database.`);
+        res.redirect('/viewSearch'); // Or any appropriate response
     } catch (error) {
         console.error(`Error clearing log entry with ID ${logId} from ${slaveDb.config.database}:`, error);
         throw error;
@@ -575,6 +581,7 @@ app.post('/deleteAppointment', async (req, res) => {
                 else resolve(result);
             });
         });
+        synchronizeUpdateDeleteDBs(sql, [apptcode])
         console.log('Appointment deleted successfully on master database.');
         res.redirect('/viewSearch');
     } catch (error) {
@@ -650,6 +657,9 @@ app.post('/insertAppointment', async (req, res) => {
         }
 
         await attemptInsert(db, apptcode);
+
+        // Sync with other DBs
+        synchronizeAddDBs(insertSql, clinicid, [apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind])
         console.log('New appointment added successfully with apptcode:', apptcode);
         res.redirect('/addAppointments');
     } catch (error) {
@@ -673,21 +683,29 @@ app.post('/insertAppointment', async (req, res) => {
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql = the actual query | query_params = list parameters for the query
 // example use: synchronizeDBs(sql, [status, last_updated])
-function synchronizeUpdateDeleteDBs(sql, query_params){
+async function synchronizeUpdateDeleteDBs(sql, query_params){
     // Slave 1
-    db_slave1.query(sql, query_params, (err, result) => {
-        if (err) throw err;
+    await new Promise((resolve, reject) => { 
+        db_slave1.query(sql, query_params, (err, result) => {
+            if (err) reject(err);
+            else resolve();
+        });
+        console.log('Change reflected on Slave 1');
     });
     // Slave 2
-    db_slave2.query(sql, query_params, (err, result) => {
-        if (err) throw err;
+    await new Promise((resolve, reject) => { 
+        db_slave2.query(sql, query_params, (err, result) => {
+            if (err) reject(err);
+            else resolve();
+        });
+        console.log('Change reflected on Slave 2');
     });
 }
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
 // sql_insert = the actual insert query | clinicid = for checking if it exists in slave 1 or 2 | query_params = list parameters for the query 
 // example use: synchronizeAddDBs(insertSql, clinicid, [maxApptCode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind || 'NULL'])
-function synchronizeAddDBs(sql_insert, clinicid, query_params){
+async function synchronizeAddDBs(sql_insert, clinicid, query_params){
 
     let clinic_list1, clinic_list2;
 
@@ -702,19 +720,21 @@ function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'MIMAROPA (IV-B)', 
                                             'Bicol Region (V)')`
 
-    db_slave1.query(sql_select1, query_params, (err, result) => {
-        if (err) throw err
+    await new Promise((resolve, reject) => { 
+        db_slave1.query(sql_select1, query_params, (err, result) => {
+            if (err) throw err
 
-        clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+            clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
 
-        console.log('Checking Slave 1')
-        if (clinic_list1.includes(clinicid)) {
-            db_slave1.query(sql_insert, query_params, (err, result) => {
-                if (err) throw err
+            console.log('Checking Slave 1')
+            if (clinic_list1.includes(clinicid)) {
+                db_slave1.query(sql_insert, query_params, (err, result) => {
+                    if (err) throw err
 
-                console.log('INSERT success -> Slave 1')
-            })
-        }
+                    console.log('INSERT success -> Slave 1')
+                })
+            }
+        });
     });
 
     const sql_select2 = `SELECT clinicid
@@ -729,20 +749,23 @@ function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'Caraga (XIII)',
                                             'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
                                             );`
+             
+    await new Promise((resolve, reject) => { 
+        db_slave2.query(sql_select2, query_params, (err, result) => {
+            if (err) reject(err)
 
-    db_slave2.query(sql_select2, query_params, (err, result) => {
-        if (err) throw err
+            clinic_list2 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
+            console.log('Checking Slave 2')
 
-        clinic_list2 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
-        
-        console.log('Checking Slave 2')
-        if (clinic_list2.includes(clinicid)) {
-            db_slave2.query(sql_insert, query_params, (err, result) => {
-                if (err) throw err
+            if (clinic_list2.includes(clinicid)) {
+                db_slave2.query(sql_insert, query_params, (err, result) => {
+                    if (err) reject(err)
+                    else resolve()
 
-                console.log('INSERT success -> Slave 2')
-            })
-        }
+                    console.log('INSERT success -> Slave 2')
+                })
+            }
+        });
     });
 
 }

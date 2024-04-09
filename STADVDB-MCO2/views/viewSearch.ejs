@@ -91,6 +91,17 @@
     </nav>
     <div class="container" id="records">
         <h1>Search Appointments</h1>
+        <button onclick="reconnectDatabases()">Reconnect Databases</button>
+
+<script>
+function reconnectDatabases() {
+    fetch('/reconnectDatabases')
+    .then(response => response.text())
+    .then(message => alert(message))
+    .catch(err => alert('Error: ' + err));
+}
+</script>
+
         <form action="/viewSearch" method="GET" style="margin-bottom: 20px;">
             <label for="searchColumn">Search By:</label>
         <select id="searchColumn" name="searchColumn">

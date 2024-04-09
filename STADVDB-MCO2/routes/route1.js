@@ -9,7 +9,7 @@ const masterConfig = {
     host: 'localhost',
     user: 'root',
 
-    password: 'admin123', //change password to specific credentials
+    password: 'pipowasher3', //change password to specific credentials
 
     database: 'mco2',
   };
@@ -71,7 +71,7 @@ function checkConnection(connection, config, label) {
   }
 
 app.get('/', async (req, res) => {
-    db.destroy();     //Use when simulating database crashes
+    // db.destroy();     //Use when simulating database crashes
     checkConnections()   //if you want to see connection states of the vars
     //reconnectAll()    // reconnect every connection and still uses the same vars that were established
     res.render('index');
@@ -420,6 +420,7 @@ app.post('/submitUpdate', async (req, res) => {
 
         // Attempt the update and log operation on slave1
         let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
+        synchronizeUpdateDeleteDBs(sqlUpdate, params)
 
         if (result.success) {
             res.redirect('/viewSearch');
@@ -632,7 +633,7 @@ app.post('/insertAppointment', async (req, res) => {
         }
         await attemptInsert(db, apptcode);
 
-        synchronizeAddDBs(insertSql, clinicid, [apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind])
+        await synchronizeAddDBs(insertSql, clinicid, [apptcode, apptid, clinicid, doctorid, pxid, status, queuedate, type, virtualind])
         console.log('New appointment added successfully with apptcode:', apptcode);
         res.redirect('/addAppointments');
     } catch (error) {
@@ -693,18 +694,18 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'MIMAROPA (IV-B)', 
                                             'Bicol Region (V)')`
 
-    await new Promise((resolve, reject) => { 
+    new Promise((resolve, reject) => { 
         db_slave1.query(sql_select1, query_params, (err, result) => {
             if (err) throw err
 
             clinic_list1 = JSON.parse(JSON.stringify(result)).map((item) => item.clinicid)
 
             console.log('Checking Slave 1')
+
             if (clinic_list1.includes(clinicid)) {
                 db_slave1.query(sql_insert, query_params, (err, result) => {
                     if (err) throw err
-
-                    console.log('INSERT success -> Slave 1')
+                    else resolve()
                 })
             }
         });
@@ -723,7 +724,7 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
                                             'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
                                             );`
              
-    await new Promise((resolve, reject) => { 
+    new Promise((resolve, reject) => { 
         db_slave2.query(sql_select2, query_params, (err, result) => {
             if (err) reject(err)
 
@@ -734,8 +735,6 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
                 db_slave2.query(sql_insert, query_params, (err, result) => {
                     if (err) reject(err)
                     else resolve()
-
-                    console.log('INSERT success -> Slave 2')
                 })
             }
         });

@@ -89,7 +89,7 @@ function checkConnection(connection, config, label) {
                 resolve(result)
             }
         });
-        db.query(sqlIsolation, (err, result) => {
+        db.query(sqlTimeLock, (err, result) => {
             if (err) reject()
             else {
                 console.log(`Master Iso Level = ${isoLvl}`)
@@ -106,6 +106,13 @@ function checkConnection(connection, config, label) {
                 console.log(`Slave 1 Iso Level = ${isoLvl}`)
             }
         });
+        db_slave1.query(sqlTimeLock, (err, result) => {
+            if (err) reject()
+            else {
+                console.log(`Master Iso Level = ${isoLvl}`)
+                resolve(result)
+            }
+        });
     });
     // SLAVE 2
     await new Promise((resolve, reject) => {
@@ -116,6 +123,13 @@ function checkConnection(connection, config, label) {
                 resolve(result)
             }
             
+        });
+        db_slave2.query(sqlTimeLock, (err, result) => {
+            if (err) reject()
+            else {
+                console.log(`Master Iso Level = ${isoLvl}`)
+                resolve(result)
+            }
         });
     });
   }
@@ -367,10 +381,12 @@ app.get('/updateAppointments/:apptcode', async (req, res) => {
     // Helper function for querying database and fetching data
     async function fetchData(query, params, dbConnection) {
         return new Promise((resolve, reject) => {
+            dbConnection.beginTransaction()
             dbConnection.query(query, params, (err, results) => {
                 if (err) reject(err);
                 else resolve(results);
             });
+            dbConnection.commit()
         });
     }
 
@@ -466,12 +482,50 @@ app.post('/submitUpdate', async (req, res) => {
     // First, fetch the current (old) status
     let oldValue;
     try {
-        const fetchResult = await executeQuery(db_slave1, 'SELECT status FROM appointments WHERE apptcode = ?', [apptcode]);
-        if (fetchResult.length > 0) oldValue = fetchResult[0].status;
-        else throw new Error('Appointment not found.');
+        // const fetchResult = await executeQuery(db_slave1, 'SELECT status FROM appointments WHERE apptcode = ?', [apptcode]);
+        // if (fetchResult.length > 0) oldValue = fetchResult[0].status;
+        // else throw new Error('Appointment not found.');
 
-        // Attempt the update and log operation on slave1 Case #3
-        let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
+        // // Attempt the update and log operation on slave1 Case #3
+        // let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
+
+        let fetchResult;
+        let oldValue;
+        let dbNameUsed; // This will keep track of which database was used
+
+        try {
+            // First attempt to fetch from slave1
+            fetchResult = await executeQuery(db_slave1, 'SELECT status FROM appointments WHERE apptcode = ?', [apptcode]);
+            dbNameUsed = 'slave1'; // Marking the DB used for the operation
+        } catch (error) {
+            // If an error occurs, assume it might be due to the appointment not being found in slave1
+            console.log('Attempting to fetch from db_slave2 due to error:', error.message);
+        }
+
+        // If fetchResult is undefined or its length is 0, try db_slave2
+        if (!fetchResult || fetchResult.length === 0) {
+            try {
+                fetchResult = await executeQuery(db_slave2, 'SELECT status FROM appointments WHERE apptcode = ?', [apptcode]);
+                dbNameUsed = 'slave2'; // Marking the DB used for the operation
+            } catch (error) {
+                // If an error occurs here, it's likely because the appointment wasn't found in either database
+                console.error('Error fetching appointment from db_slave2:', error.message);
+                throw new Error('Appointment not found in both databases.');
+            }
+        }
+
+        // Proceed only if fetchResult has data
+        if (fetchResult && fetchResult.length > 0) {
+            oldValue = fetchResult[0].status;
+
+            // Attempt the update and log operation on the appropriate slave database
+            let result = await executeUpdateAndLog(dbNameUsed === 'slave1' ? db_slave1 : db_slave2, dbNameUsed, sqlUpdate, params, apptcode, oldValue, newValue);
+            // Continue with your logic here...
+        } else {
+            // If this point is reached, it means no data was fetched from either database, which shouldn't happen due to the earlier throw
+            throw new Error('Unexpected error: No data after checks.');
+        }
+
 
         // Comment out to simulate Case #3 
         await new Promise((resolve, reject) => {
@@ -485,11 +539,12 @@ app.post('/submitUpdate', async (req, res) => {
 
         await synchronizeUpdateDeleteDBs(sqlUpdate, params);
 
-        if (result.success) {
-            res.redirect('/viewSearch');
-        } else {
-            res.status(500).send('Unable to update the appointment on any database.');
-        }
+        // if (result.success) {
+        //     res.redirect('/viewSearch');
+        // } else {
+        //     res.status(500).send('Unable to update the appointment on any database.');
+        // }
+        res.redirect('/viewSearch');
     } catch (error) {
         console.error('Error fetching old status or updating:', error);
         res.status(500).send(error.message);

@@ -20,6 +20,7 @@ const slave2Config = { ...masterConfig, database: 'mco2slave2'}; //database name
 var db = createConnection(masterConfig,'master');
 var db_slave1 = createConnection(slave1Config,'slave1');
 var db_slave2 = createConnection(slave2Config,'slave2');
+setIsolationLevels()
 
 function createConnection(config,label) {
     let connection = mysql.createConnection(config);
@@ -68,12 +69,62 @@ function checkConnection(connection, config, label) {
     db = createConnection(masterConfig,'master');
     db_slave1 = createConnection(slave1Config,'slave1');
     db_slave2 = createConnection(slave2Config,'slave2');
+    setIsolationLevels()
+  }
+
+  async function setIsolationLevels(){
+    isoLvl = 'READ UNCOMMITTED'
+    sqlIsolation = `SET TRANSACTION ISOLATION LEVEL ${isoLvl}`;
+
+    time = 10000
+    sqlTimeLock = `SET LOCK_TIMEOUT ${time};`
+
+    // MASTER
+    await new Promise((resolve, reject) => {
+        db.query(sqlIsolation, (err, result) => {
+            if (err) reject()
+            else {
+                console.log(`Master Iso Level = ${isoLvl}`)
+                resolve(result)
+            }
+        });
+        db.query(sqlIsolation, (err, result) => {
+            if (err) reject()
+            else {
+                console.log(`Master Iso Level = ${isoLvl}`)
+                resolve(result)
+            }
+        });
+    });
+    // SLAVE 1
+    await new Promise((resolve, reject) => {
+        db_slave1.query(sqlIsolation, (err, result) => {
+            if (err) reject()
+            else {
+                resolve(result)
+                console.log(`Slave 1 Iso Level = ${isoLvl}`)
+            }
+        });
+    });
+    // SLAVE 2
+    await new Promise((resolve, reject) => {
+        db_slave2.query(sqlIsolation, (err, result) => {
+            if (err) reject()
+            else {
+                console.log(`Slave 2 Iso Level = ${isoLvl}`)
+                resolve(result)
+            }
+            
+        });
+    });
   }
 
 app.get('/', async (req, res) => {
     // db.destroy();     //Use when simulating database crashes
+    // db_slave1.destroy()
     checkConnections()   //if you want to see connection states of the vars
     //reconnectAll()    // reconnect every connection and still uses the same vars that were established
+
     res.render('index');
 });
 
@@ -244,13 +295,11 @@ app.get('/viewSearch', async (req, res) => {
         let appointments = [];
         if (searchTerm) {
             const searchParams = [`%${searchTerm}%`];
-            const results1 = await queryDatabase(db_slave1, sql, searchParams);
-            const results2 = await queryDatabase(db_slave2, sql, searchParams);
-            appointments = mergeResults(results1, results2).slice(0, 500);
+            const results1 = await queryDatabase(db, sql, searchParams);
+            appointments = results1.slice(0, 500);
         } else {
-            const results1 = await queryDatabase(db_slave1, sql, []);
-            const results2 = await queryDatabase(db_slave2, sql, []);
-            appointments = mergeResults(results1, results2).slice(0, 500);
+            const results1 = await queryDatabase(db, sql, []);
+            appointments = results1.slice(0, 500);
         }
 
         res.render('viewSearch', { appointments, formatDate: formatDate, searchColumn: searchColumn });
@@ -370,10 +419,12 @@ app.get('/updateAppointments/:apptcode', async (req, res) => {
 });
 async function executeQuery(dbConnection, sql, params) {
     return new Promise((resolve, reject) => {
+        dbConnection.beginTransaction()
         dbConnection.query(sql, params, (error, results) => {
             if (error) return reject(error);
             resolve(results);
         });
+        dbConnection.commit()
     });
 }
 
@@ -418,9 +469,20 @@ app.post('/submitUpdate', async (req, res) => {
         if (fetchResult.length > 0) oldValue = fetchResult[0].status;
         else throw new Error('Appointment not found.');
 
-        // Attempt the update and log operation on slave1
+        // Attempt the update and log operation on slave1 Case #3
         let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
-        synchronizeUpdateDeleteDBs(sqlUpdate, params)
+
+        // Comment out to simulate Case #3 
+        await new Promise((resolve, reject) => {
+            db.beginTransaction()
+            db.query(sqlUpdate, params, (err, result) => {
+                if (err) reject()
+                else resolve(result)
+            });
+            db.commit()
+        });
+
+        await synchronizeUpdateDeleteDBs(sqlUpdate, params);
 
         if (result.success) {
             res.redirect('/viewSearch');
@@ -560,7 +622,7 @@ app.post('/deleteAppointment', async (req, res) => {
                 else resolve(result);
             });
         });
-        synchronizeUpdateDeleteDBs(sql, [apptcode])
+        await synchronizeUpdateDeleteDBs(sql, [apptcode])
         console.log('Appointment deleted successfully on master database.');
         res.redirect('/viewSearch');
     } catch (error) {
@@ -658,22 +720,56 @@ app.post('/insertAppointment', async (req, res) => {
 // sql = the actual query | query_params = list parameters for the query
 // example use: synchronizeDBs(sql, [status, last_updated])
 async function synchronizeUpdateDeleteDBs(sql, query_params){
+
+    // COMMENT OUT FOR CASE#4
+    // db_slave1.destroy();
+    // db_slave2.destroy();
+
     // Slave 1
-    await new Promise((resolve, reject) => { 
-        db_slave1.query(sql, query_params, (err, result) => {
-            if (err) reject(err);
-            else resolve();
+    try {
+        await new Promise((resolve, reject) => { 
+            db_slave1.beginTransaction((err) => {
+                if (err) reject(err);
+                else resolve();
+            })
+            db_slave1.query(sql, query_params, (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            });
+            db_slave1.commit((err) => {
+                if (err) reject(err);
+                else resolve();
+            })
+            console.log('Change reflected on Slave 1');
         });
-        console.log('Change reflected on Slave 1');
-    });
+    } catch {
+        console.log('Slave 1 - CRASHED')
+        reconnectAll()
+        retrySynchronization(sql, query_params);
+    }
+    
     // Slave 2
-    await new Promise((resolve, reject) => { 
-        db_slave2.query(sql, query_params, (err, result) => {
-            if (err) reject(err);
-            else resolve();
+    try {
+        await new Promise((resolve, reject) => { 
+            db_slave2.beginTransaction((err) => {
+                if (err) reject(err);
+                else resolve();
+            })
+            db_slave2.query(sql, query_params, (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            });
+            db_slave2.commit((err) => {
+                if (err) reject(err);
+                else resolve();
+            })
+            console.log('Change reflected on Slave 2');
         });
-        console.log('Change reflected on Slave 2');
-    });
+    } catch {
+        console.log('Slave 2 - CRASHED')
+        reconnectAll()
+        retrySynchronization(sql, query_params);
+    }
 }
 
 // SYNCHRONIZE WITH SLAVE 1 AND 2 FOR UPDATING AND DELETING ROWS
@@ -705,7 +801,7 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
             if (clinic_list1.includes(clinicid)) {
                 db_slave1.query(sql_insert, query_params, (err, result) => {
                     if (err) throw err
-                    else resolve()
+                    else resolve(result)
                 })
             }
         });
@@ -734,12 +830,38 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
             if (clinic_list2.includes(clinicid)) {
                 db_slave2.query(sql_insert, query_params, (err, result) => {
                     if (err) reject(err)
-                    else resolve()
+                    else resolve(result)
                 })
             }
         });
     });
 
+}
+
+async function retrySynchronization(sql, query_params){
+
+    // Simulate the downtime for reconnecting when a server crashes
+    await sleep(10000); // input time in ms ex. 5000 = 5 secs
+    
+    new Promise((resolve, reject) => {
+        db_slave1.beginTransaction()
+        db_slave1.query(sql, query_params, (err, result) => {
+            if (err) reject(err)
+            else resolve(result)
+        });
+        db_slave1.commit()
+        console.log('Synchronizaion with DB Slave 1 successful after crash')
+    });
+
+    new Promise((resolve, reject) => {
+        db_slave2.beginTransaction()
+        db_slave2.query(sql, query_params, (err, result) => {
+            if (err) reject(err)
+            else resolve(result)
+        });
+        db_slave2.commit()
+        console.log('Synchronizaion with DB Slave 2 successful after crash ')
+    });
 }
 
 app.get('/reconnectDatabases', async (req, res) => {
@@ -756,5 +878,9 @@ app.get('/reconnectDatabases', async (req, res) => {
         res.status(500).send('Failed to reconnect databases or synchronize changes.');
     }
 });
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 module.exports = app;

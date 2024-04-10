@@ -73,8 +73,9 @@ function checkConnection(connection, config, label) {
   }
 
   async function setIsolationLevels(){
+    // READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE
     isoLvl = 'READ UNCOMMITTED'
-    sqlIsolation = `SET TRANSACTION ISOLATION LEVEL ${isoLvl}`;
+    sqlIsolation = `SET GLOBAL TRANSACTION ISOLATION LEVEL ${isoLvl}`;
 
     time = 10000
     sqlTimeLock = `SET LOCK_TIMEOUT ${time};`

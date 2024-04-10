@@ -50,6 +50,7 @@ function checkConnection(connection, config, label) {
     connection.query('SELECT 1', (err) => {
       if (err) {
         console.error(`${label} - Lost connection...`);
+        return 1;
         // The connection is destroyed, attempt to reconnect
         //connection.createConnection(config, label); 
         //^--Commented this out kasi wala naman effect dun sa original na vars
@@ -489,6 +490,25 @@ app.post('/submitUpdate', async (req, res) => {
         // // Attempt the update and log operation on slave1 Case #3
         // let result = await executeUpdateAndLog(db_slave1, 'slave1', sqlUpdate, params, apptcode, oldValue, newValue);
 
+        // Comment out to simulate Case #3 
+        await new Promise((resolve, reject) => {
+            db.beginTransaction()
+            db.query(sqlUpdate, params, (err, result) => {
+                if (err) reject()
+                else resolve(result)
+            });
+            db.commit()
+        });
+
+        await synchronizeUpdateDeleteDBs(sqlUpdate, params);
+
+        // if (result.success) {
+        //     res.redirect('/viewSearch');
+        // } else {
+        //     res.status(500).send('Unable to update the appointment on any database.');
+        // }
+        res.redirect('/viewSearch');
+    } catch (error) {
         let fetchResult;
         let oldValue;
         let dbNameUsed; // This will keep track of which database was used
@@ -526,28 +546,10 @@ app.post('/submitUpdate', async (req, res) => {
             throw new Error('Unexpected error: No data after checks.');
         }
 
-
-        // Comment out to simulate Case #3 
-        await new Promise((resolve, reject) => {
-            db.beginTransaction()
-            db.query(sqlUpdate, params, (err, result) => {
-                if (err) reject()
-                else resolve(result)
-            });
-            db.commit()
-        });
-
-        await synchronizeUpdateDeleteDBs(sqlUpdate, params);
-
-        // if (result.success) {
-        //     res.redirect('/viewSearch');
-        // } else {
-        //     res.status(500).send('Unable to update the appointment on any database.');
-        // }
         res.redirect('/viewSearch');
-    } catch (error) {
-        console.error('Error fetching old status or updating:', error);
-        res.status(500).send(error.message);
+
+        // console.error('Error fetching old status or updating:', error);
+        // res.status(500).send(error.message);
     }
 });
 
@@ -896,23 +898,20 @@ async function synchronizeAddDBs(sql_insert, clinicid, query_params){
 
 async function retrySynchronization(sql, query_params){
 
-    // Simulate the downtime for reconnecting when a server crashes
-    await sleep(10000); // input time in ms ex. 5000 = 5 secs
-    
-    new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
         db_slave1.beginTransaction()
         db_slave1.query(sql, query_params, (err, result) => {
-            if (err) reject(err)
+            if (err) setTimeout(() => retrySynchronization(sql, query_params), 5000)
             else resolve(result)
         });
         db_slave1.commit()
         console.log('Synchronizaion with DB Slave 1 successful after crash')
     });
 
-    new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
         db_slave2.beginTransaction()
         db_slave2.query(sql, query_params, (err, result) => {
-            if (err) reject(err)
+            if (err) setTimeout(() => retrySynchronization(sql, query_params), 5000)
             else resolve(result)
         });
         db_slave2.commit()

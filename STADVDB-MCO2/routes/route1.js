@@ -9,7 +9,7 @@ const masterConfig = {
     host: 'localhost',
     user: 'root',
 
-    password: 'pipowasher3', //change password to specific credentials
+    password: 'melgeoffrey', //change password to specific credentials
 
     database: 'mco2',
   };
@@ -28,7 +28,7 @@ function createConnection(config,label) {
     connection.connect((err) => {
       if (err) {
         console.error(`${label} - Error connecting to the MySQL server`);
-        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds (not applicable satin ata)
+        setTimeout(() => createConnection(config), 2000); // Try to reconnect every 2 seconds
       } else {
         console.log(`${label} - Connected to the MySQL server.`);
       }
@@ -74,7 +74,7 @@ function checkConnection(connection, config, label) {
 
   async function setIsolationLevels(){
     // READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE
-    isoLvl = 'READ UNCOMMITTED'
+    isoLvl = 'SERIALIZABLE'
     sqlIsolation = `SET GLOBAL TRANSACTION ISOLATION LEVEL ${isoLvl}`;
 
     time = 10000
@@ -138,8 +138,8 @@ app.get('/', async (req, res) => {
     // db.destroy();     //Use when simulating database crashes
     // db_slave1.destroy()
     checkConnections()   //if you want to see connection states of the vars
-    //reconnectAll()    // reconnect every connection and still uses the same vars that were established
-
+    reconnectAll()    // reconnect every connection and still uses the same vars that were established
+    attemptSlavesToMaster()
     res.render('index');
 });
 
@@ -920,6 +920,16 @@ async function retrySynchronization(sql, query_params){
     });
 }
 
+async function attemptSlavesToMaster(){
+    try{
+        await synchronizeAllSlavesToMaster();
+        console.log('All databases reconnected and changes synchronized successfully.');
+
+    }
+    catch (error) {
+        console.error('Failed to synchronize any changes:', error); 
+    }
+}
 app.get('/reconnectDatabases', async (req, res) => {
     try {
         // Reconnect all databases
